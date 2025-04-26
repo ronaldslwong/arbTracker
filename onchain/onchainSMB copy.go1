@@ -1,0 +1,290 @@
+package onchainSMB
+
+import (
+	"context"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	"arbTracker/configLoad"
+	"arbTracker/types"
+
+	"github.com/gagliardetto/solana-go"
+	compute_budget "github.com/gagliardetto/solana-go/programs/compute-budget" // Updated import
+	"github.com/gagliardetto/solana-go/rpc"
+)
+
+// Struct to match the private key JSON format
+type KeyFile struct {
+	PrivateKey string `json:"private_key"`
+}
+
+// // Pool Structs
+// type RaydiumPool struct {
+// 	AMM      solana.PublicKey
+// 	XVault   solana.PublicKey
+// 	SOLVault solana.PublicKey
+// }
+
+// type RaydiumCPPool struct {
+// 	Pool        solana.PublicKey
+// 	AMMConfig   solana.PublicKey
+// 	XVault      solana.PublicKey
+// 	SOLVault    solana.PublicKey
+// 	Observation solana.PublicKey
+// }
+
+// type PumpPool struct {
+// 	ProgramId      solana.PublicKey // Pump program ID
+// 	GlobalConfig   solana.PublicKey // Pump global config
+// 	Authority      solana.PublicKey // Pump authority
+// 	FeeWallet      solana.PublicKey // Pump fee wallet
+// 	Pool           solana.PublicKey
+// 	XAccount       solana.PublicKey
+// 	SOLAccount     solana.PublicKey
+// 	FeeTokenWallet solana.PublicKey
+// }
+
+type TokenPool struct {
+	XMint          solana.PublicKey
+	WalletXAccount solana.PublicKey //E1SsaCT4eaKATYKKDb9RCWAf9HsdTN5w3uhvvNgHyqbd
+	RaydiumPools   []types.RaydiumPool
+	RaydiumCPPools []types.RaydiumCPPool
+	PumpPools      []types.PumpPool
+	DLMMPairs      []types.DLMMTriple
+}
+
+// Instruction Builder
+func GenerateOnchainSwapInstruction(
+	wallet, solMint, walletSolAccount solana.PublicKey,
+	tokenProgram, systemProgram, associatedTokenProgram solana.PublicKey,
+	tokenPools []TokenPool,
+	programId solana.PublicKey,
+	minimumProfit, maxBinToProcess uint64,
+) *solana.GenericInstruction {
+
+	feeCollector := solana.MustPublicKeyFromBase58("6AGB9kqgSp2mQXwYpdrV4QVV8urvCaDS35U1wsLssy6H")
+	xming := solana.MustPublicKeyFromBase58("DPTP4fUfWuwVTgCmttWBu6Sy5B9TeCTBjc2YKgpDpump")
+
+	accounts := []*solana.AccountMeta{
+		solana.NewAccountMeta(wallet, true, false),
+		solana.NewAccountMeta(solMint, false, false),
+		solana.NewAccountMeta(xming, false, false),
+		solana.NewAccountMeta(feeCollector, false, false),
+		solana.NewAccountMeta(walletSolAccount, false, false),
+		solana.NewAccountMeta(tokenProgram, false, false),
+		solana.NewAccountMeta(systemProgram, false, false),
+		solana.NewAccountMeta(associatedTokenProgram, false, false),
+	}
+
+	for _, pool := range tokenPools {
+		accounts = append(accounts,
+			solana.NewAccountMeta(pool.XMint, false, false),
+			solana.NewAccountMeta(pool.WalletXAccount, false, false),
+		)
+
+		for _, r := range pool.RaydiumPools {
+			accounts = append(accounts,
+				solana.NewAccountMeta(r.ProgramId, false, false),
+				solana.NewAccountMeta(r.Authority, false, false),
+				solana.NewAccountMeta(r.AMM, false, false),
+				solana.NewAccountMeta(r.XVault, false, false),
+				solana.NewAccountMeta(r.SOLVault, false, false),
+			)
+		}
+
+		for _, cp := range pool.RaydiumCPPools {
+			accounts = append(accounts,
+				solana.NewAccountMeta(cp.ProgramId, false, false),
+				solana.NewAccountMeta(cp.Authority, false, false),
+				solana.NewAccountMeta(cp.Pool, false, false),
+				solana.NewAccountMeta(cp.AMMConfig, false, false),
+				solana.NewAccountMeta(cp.XVault, false, false),
+				solana.NewAccountMeta(cp.SOLVault, false, false),
+				solana.NewAccountMeta(cp.Observation, false, false),
+			)
+		}
+
+		for _, p := range pool.PumpPools {
+			accounts = append(accounts,
+				solana.NewAccountMeta(p.ProgramId, false, false),
+				solana.NewAccountMeta(p.GlobalConfig, false, false),
+				solana.NewAccountMeta(p.Authority, false, false),
+				solana.NewAccountMeta(p.FeeWallet, false, false),
+				solana.NewAccountMeta(p.Pool, false, false),
+				solana.NewAccountMeta(p.XAccount, false, false),
+				solana.NewAccountMeta(p.SOLAccount, false, false),
+				solana.NewAccountMeta(p.FeeTokenWallet, false, false),
+			)
+		}
+
+		for _, d := range pool.DLMMPairs {
+			accounts = append(accounts,
+				solana.NewAccountMeta(d.DlmmProgramId, false, false),
+				solana.NewAccountMeta(d.DlmmEventAuthority, false, false),
+				solana.NewAccountMeta(d.Pair, false, false),
+				solana.NewAccountMeta(d.XVault, false, false),
+				solana.NewAccountMeta(d.SOLVault, false, false),
+				solana.NewAccountMeta(d.Oracle, false, false),
+			)
+			for i := range d.BinArrays {
+				accounts = append(accounts, &d.BinArrays[i])
+			}
+		}
+	}
+	// Prepare data
+	data := []byte{10}
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, minimumProfit)
+	data = append(data, buf...)
+	binary.LittleEndian.PutUint64(buf, maxBinToProcess)
+	data = append(data, buf...)
+
+	// Directly return the GenericInstruction type
+	instruction := solana.NewInstruction(
+		programId, // Program ID
+		accounts,  // Accounts
+		data,      // Data
+	)
+
+	return instruction // Return the *solana.GenericInstruction
+
+}
+
+// Load keypair from solana-keygen file
+func LoadKeypair(path string) (solana.PrivateKey, error) {
+	return solana.PrivateKeyFromSolanaKeygenFile(path)
+}
+
+func LoadKeypairFromJSON(filePath string) (*solana.PrivateKey, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read keypair file: %w", err)
+	}
+
+	var bytes []byte
+	if err := json.Unmarshal(data, &bytes); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal keypair JSON: %w", err)
+	}
+
+	kp := solana.PrivateKey(bytes)
+	if err != nil {
+		return nil, fmt.Errorf("invalid private key bytes: %w", err)
+	}
+	return &kp, nil
+}
+
+func SendTx(config configLoad.Config, privateKey *solana.PrivateKey, tradeDetails types.TradeConfig, blockHash solana.Hash) {
+	start := time.Now()
+	// Create a client to talk to your RPC
+	client := rpc.New(config.RPCEndpoint) // or your custom RPC
+
+	walletPubkey := privateKey.PublicKey()
+
+	// wallet := solana.MustPublicKeyFromBase58(walletPubkey)
+	mint := solana.MustPublicKeyFromBase58(tradeDetails.Mint)
+
+	t1 := time.Now()
+	ata, _, err := solana.FindAssociatedTokenAddress(walletPubkey, mint)
+	if err != nil {
+		log.Fatalf("failed to derive ATA: %v", err)
+	}
+
+	// Dummy example public keys (replace with actual ones)
+	solMint := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
+	walletSolAccount := solana.MustPublicKeyFromBase58("6MF8zKwWjrg5Rbt5We8y9ypu7aQzGbc2JHrAZSJiBNCF")
+	tokenProgram := solana.TokenProgramID
+	systemProgram := solana.SystemProgramID
+	associatedTokenProgram := solana.MustPublicKeyFromBase58("ATokenGVdC9pJ31tCgjHz8nrKVy5r5wHmtREeQMQf3cF")
+	programId := solana.MustPublicKeyFromBase58("MEViEnscUm6tsQRoGd9h6nLQaQspKj7DB2M5FwM3Xvz") // your on-chain arb program
+
+	// Example tokenPools slice (empty here — fill with actual pools)
+	var tokenPools []TokenPool
+
+	pool := TokenPool{
+		XMint:          mint,
+		WalletXAccount: ata,                    //solana.MustPublicKeyFromBase58("E1SsaCT4eaKATYKKDb9RCWAf9HsdTN5w3uhvvNgHyqbd"),
+		RaydiumPools:   tradeDetails.Raydium,   // Not used in this tx
+		RaydiumCPPools: tradeDetails.RaydiumCP, // Not used in this tx
+		PumpPools:      tradeDetails.Pump,
+		DLMMPairs:      tradeDetails.DLMM,
+	}
+
+	tokenPools = append(tokenPools, pool)
+	fmt.Println("pump ", tradeDetails.Pump)
+	fmt.Println("dlmm ", tradeDetails.DLMM)
+	fmt.Println(pool)
+	// Call your function
+	instruction := GenerateOnchainSwapInstruction(
+		walletPubkey,
+		solMint,
+		walletSolAccount,
+		tokenProgram,
+		systemProgram,
+		associatedTokenProgram,
+		tokenPools,
+		programId,
+		1000, // minimumProfit
+		50,   // maxBinToProcess
+	)
+
+	t2 := time.Now()
+	priceIx := compute_budget.NewSetComputeUnitPriceInstruction(tradeDetails.CUPrice).Build() // 5000 µlamports = 0.000005 SOL per CU
+	limitIx := compute_budget.NewSetComputeUnitLimitInstruction(800_000).Build()
+
+	t25 := time.Now()
+	// Build transaction
+	tx, err := solana.NewTransaction(
+		[]solana.Instruction{limitIx, priceIx, instruction}, // pass your instruction here
+		blockHash,
+		solana.TransactionPayer(walletPubkey),
+	)
+	if err != nil {
+		log.Fatalf("failed to create transaction: %v", err)
+	}
+	t3 := time.Now()
+
+	// Sign the transaction
+	_, err = tx.Sign(
+		func(key solana.PublicKey) *solana.PrivateKey {
+			if key.Equals(walletPubkey) {
+				return privateKey
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		log.Fatalf("failed to sign transaction: %v", err)
+	}
+
+	t4 := time.Now()
+
+	// fmt.Println(finish.Sub(start))
+	// Send it
+	txSig, err := client.SendTransactionWithOpts(
+		context.TODO(),
+		tx,
+		rpc.TransactionOpts{
+			SkipPreflight:       true,
+			PreflightCommitment: rpc.CommitmentFinalized,
+		},
+	)
+
+	finish := time.Now()
+
+	fmt.Println(t1.Sub(start))
+	fmt.Println(t2.Sub(t1))
+	fmt.Println(t25.Sub(t2))
+	fmt.Println(t3.Sub(t25))
+	fmt.Println(t4.Sub(t3))
+	fmt.Println(finish.Sub(t4))
+	if err != nil {
+		log.Fatalf("failed to send transaction: %v", err)
+	}
+
+	log.Println("Transaction sent:", txSig)
+
+}
