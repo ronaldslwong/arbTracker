@@ -26,7 +26,8 @@ func StartTradeLoop(ctx context.Context, config configLoad.Config) {
 
 				for _, trade := range trades {
 					go func(t types.TradeConfig) {
-						onchainSMB.SendTx(config, t)
+						onchainSMB.SendTx(config, t, CurrentMultiplier)
+
 					}(trade)
 				}
 			}

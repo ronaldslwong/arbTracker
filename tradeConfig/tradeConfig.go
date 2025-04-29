@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"time"
 
 	blockhashrefresh "arbTracker/blockhashRefresh"
 	"arbTracker/configLoad"
 	"arbTracker/fetcher"
 	"arbTracker/globals"
+	"arbTracker/tradeLoop"
 	"arbTracker/types"
 
 	"github.com/gagliardetto/solana-go"
@@ -53,22 +55,35 @@ func PushToMaster(mints []types.HotMints, config configLoad.Config, ctx context.
 				continue
 			} else {
 				newConfigs = append(newConfigs, *newConfig)
+				fmt.Println("uploaded trade list")
+
+				// update flags for dynamic CU tracker
+				if !tradeLoop.TradeActive { //no trades before, turned on now
+					tradeLoop.LastTradeTime = time.Now()
+					tradeLoop.TradeActive = true
+				}
+			}
+
+		}
+	}
+	types.TradeConfigs = newConfigs
+
+	// if len(newConfigs) > 0 {
+	// 	tradeLoop.SendTestTrades([]int{10000, 50000, 100000, 300000, 500000, 700000}, config, newConfigs[0])
+	// }
+	if len(newConfigs) > 0 {
+
+		var accountSub []solana.PublicKey
+
+		for _, x := range newConfigs {
+			for _, y := range x.DLMM {
+				accountSub = append(accountSub, y.Pair)
 			}
 		}
+
+		go fetcher.ReplaceDLMMAccountSubscriptions("main", accountSub)
 	}
-
-	var accountSub []solana.PublicKey
-
-	for _, x := range newConfigs {
-		for _, y := range x.DLMM {
-			accountSub = append(accountSub, y.Pair)
-		}
-	}
-
-	go fetcher.ReplaceDLMMAccountSubscriptions(accountSub)
-
 	// Replace the global slice with the cleaned-up one
-	types.TradeConfigs = newConfigs
 	// fmt.Println(types.TradeConfigs)
 }
 

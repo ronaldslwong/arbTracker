@@ -128,7 +128,7 @@ func GenerateOnchainSwapInstruction(
 
 }
 
-func SendTx(config configLoad.Config, tradeDetails types.TradeConfig) {
+func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier float64) solana.Signature {
 	start := time.Now()
 
 	walletPubkey := globals.PrivateKey.PublicKey()
@@ -179,7 +179,9 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig) {
 	)
 
 	// t2 := time.Now()
-	priceIx := compute_budget.NewSetComputeUnitPriceInstruction(uint64(globals.Min(int(tradeDetails.CUPrice), config.MaxCUPrice))).Build() // 5000 µlamports = 0.000005 SOL per CU
+	// fmt.Println(int(float64(tradeDetails.CUPrice) * float64(multiplier)))
+	// fmt.Println(globals.Min(int(float64(tradeDetails.CUPrice)*float64(multiplier)), config.MaxCUPrice))
+	priceIx := compute_budget.NewSetComputeUnitPriceInstruction(uint64(globals.Min(int(float64(tradeDetails.CUPrice)*float64(multiplier)), config.MaxCUPrice))).Build() // 5000 µlamports = 0.000005 SOL per CU
 	limitIx := compute_budget.NewSetComputeUnitLimitInstruction(uint32(config.CuLimit)).Build()
 
 	// t25 := time.Now()
@@ -260,4 +262,5 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig) {
 	}
 
 	fmt.Println(time.Now().Format("2006-01-02 15:04:05.999"), " Transaction sent:", txSig, "Total tx submission time: ", finish.Sub(start))
+	return txSig
 }

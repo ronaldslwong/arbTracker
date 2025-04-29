@@ -1,0 +1,61 @@
+package tradeLoop
+
+import (
+	"log"
+	"sync"
+	"time"
+
+	"arbTracker/configLoad"
+	onchainSMB "arbTracker/onchain"
+	"arbTracker/types"
+)
+
+type TransactionLandingTime struct {
+	TxID      string
+	StartedAt time.Time
+	LandedAt  *time.Time
+	CU        uint64
+	Duration  time.Duration
+}
+
+var globalTransactionLandingTimes []TransactionLandingTime
+var TransactionTimesMu sync.Mutex
+
+// StartTradeLoop starts a background loop that sends transactions every TradeInterval ms
+func SendTestTrades(cuPrices []int, config configLoad.Config, trades types.TradeConfig) {
+	// trades := types.GetAllConfigs()
+
+	testTradeConfig := trades
+
+	for _, cuPrice := range cuPrices {
+		testTradeConfig.CUPrice = uint64(cuPrice)
+		startSend := TransactionLandingTime{
+			TxID:      onchainSMB.SendTx(config, testTradeConfig).String(),
+			StartedAt: time.Now(),
+			CU:        uint64(cuPrice),
+		}
+
+		globalTransactionLandingTimes = append(globalTransactionLandingTimes, startSend)
+
+	}
+}
+
+func MarkTransactionLanded(signature string) bool {
+	TransactionTimesMu.Lock()
+	defer TransactionTimesMu.Unlock() // Always unlock, even if panic occurs
+
+	found := false
+	for i := range globalTransactionLandingTimes {
+		if globalTransactionLandingTimes[i].TxID == signature {
+			now := time.Now()
+			globalTransactionLandingTimes[i].LandedAt = &now
+			globalTransactionLandingTimes[i].Duration = now.Sub(globalTransactionLandingTimes[i].StartedAt)
+			log.Printf("Transaction %s landed at %v, CU Price %v, time taken: %v", signature, now, globalTransactionLandingTimes[i].CU, globalTransactionLandingTimes[i].Duration)
+			found = true
+			// return found
+			break
+		}
+	}
+
+	return found
+}

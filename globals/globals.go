@@ -2,9 +2,10 @@ package globals
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
-	"arbTracker/configLoad"
+	// "arbTracker/configLoad"
 
 	"github.com/gagliardetto/solana-go"
 	addresslookuptable "github.com/gagliardetto/solana-go/programs/address-lookup-table"
@@ -26,7 +27,7 @@ var (
 		sync.RWMutex
 		Pdas map[string]bool
 	}{Pdas: make(map[string]bool)}
-	GlobalSubManager *SubscriptionManager
+	// GlobalSubManager *SubscriptionManager
 )
 
 type TradedToken struct {
@@ -40,23 +41,23 @@ type TradedToken struct {
 	Timestamp int64 // unix timestamp, if available
 }
 
-type SubscriptionManager struct {
-	Stream    pb.Geyser_SubscribeClient
-	Context   context.Context
-	Cancel    context.CancelFunc
-	TradeChan chan TradedToken
-	Config    configLoad.Config
-	SendMutex sync.Mutex
-	// Optional: track current subscribed PDAs
-	CurrentDLMMPools map[string]bool
+// type SubscriptionManager struct {
+// 	Stream    pb.Geyser_SubscribeClient
+// 	Context   context.Context
+// 	Cancel    context.CancelFunc
+// 	TradeChan chan TradedToken
+// 	Config    configLoad.Config
+// 	SendMutex sync.Mutex
+// 	// Optional: track current subscribed PDAs
+// 	CurrentDLMMPools map[string]bool
 
-	// Add these fields
-	EnableTransactions  bool
-	FailedTransactions  *bool
-	VoteTransactions    *bool
-	TransactionsInclude []string
-	TransactionsExclude []string
-}
+//		// Add these fields
+//		EnableTransactions  bool
+//		FailedTransactions  *bool
+//		VoteTransactions    *bool
+//		TransactionsInclude []string
+//		TransactionsExclude []string
+//	}
 type StreamWorker struct {
 	Name         string
 	Ctx          context.Context
@@ -65,6 +66,22 @@ type StreamWorker struct {
 	Stream       pb.Geyser_SubscribeClient
 	TradeChan    chan TradedToken
 	Subscription *pb.SubscribeRequest
+}
+
+// GlobalSubManager holds the workers for each stream.
+type GlobalSubManagerType struct {
+	StreamWorkers    map[string]*StreamWorker
+	Client           pb.GeyserClient // Add the gRPC client field here
+	SendMutex        sync.Mutex
+	CurrentDLMMPools map[string]bool
+	// New field you need to add:
+	Workers map[string]*StreamWorker
+}
+
+// Initialize the GlobalSubManager if needed
+var GlobalSubManager = &GlobalSubManagerType{
+	StreamWorkers:    make(map[string]*StreamWorker),
+	CurrentDLMMPools: make(map[string]bool),
 }
 
 func ToBoolPointer(b bool) *bool {
@@ -85,22 +102,25 @@ func StringInList(str string, list []string) bool {
 	return exists
 }
 
-var LandedSlots = make(map[uint64]struct{})
-var LandedMu sync.Mutex
-var CuBlock = 1
-
-// Call this on each landed tx from your wallet
-func RecordLandedSlot(slot uint64) {
-	LandedMu.Lock()
-	defer LandedMu.Unlock()
-
-	LandedSlots[slot] = struct{}{}
-	cutoff := slot - 150 // last 150 slots only
-
-	// Clean up old entries
-	for s := range LandedSlots {
-		if s < cutoff {
-			delete(LandedSlots, s)
-		}
+// CreateWorker function for creating a new worker with a stream
+func (gsm *GlobalSubManagerType) CreateWorker(name string) (*StreamWorker, error) {
+	// Ensure gsm.Client is initialized
+	if gsm.Client == nil {
+		return nil, fmt.Errorf("gRPC client is not initialized")
 	}
+
+	// Create the subscription stream
+	stream, err := gsm.Client.Subscribe(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stream: %w", err)
+	}
+
+	// Create and return the worker with the stream
+	worker := &StreamWorker{
+		Name:         name,
+		Stream:       stream,
+		Subscription: nil,
+	}
+
+	return worker, nil
 }

@@ -26,6 +26,7 @@ import (
 	"arbTracker/globals"
 	initialize "arbTracker/init"
 	"arbTracker/tradeConfig"
+	"arbTracker/tradeLoop"
 	"arbTracker/types"
 
 	pb "github.com/rpcpool/yellowstone-grpc/examples/golang/proto"
@@ -33,7 +34,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/metadata"
 )
 
 var (
@@ -250,89 +250,69 @@ func isArbitrageTx(preBalances, postBalances []*pb.TokenBalance, owner string) b
 
 	return wsolGain > 0
 }
-
-// Function to monitor and process transactions
-func monitorTransactions(resp *pb.SubscribeUpdate) (globals.TradedToken, bool) {
-	// var cuLimit uint32
+func monitorTransactions(resp *pb.SubscribeUpdate, streamName string) (*globals.TradedToken, bool) {
 	var cuLimit, cuPrice uint64
 
 	if accountData := resp.GetAccount(); accountData != nil {
 		poolMkt, _ := solana.PublicKeyFromBase58(base58.Encode(accountData.GetAccount().Pubkey))
 		activeBinId := int32(binary.LittleEndian.Uint32(accountData.Account.Data[76 : 76+4]))
-		// fmt.Println("mint: ", poolMkt, "active bin id: ", activeBinId)
 		fetcher.UpdateDLMMActiveBin(poolMkt, activeBinId)
+		return nil, false
 	}
 
 	if tx := resp.GetTransaction(); tx != nil {
-		// fmt.Println(printSignatures(resp.GetTransaction().Transaction.Transaction.Signatures)[0])
-		if base58.Encode(tx.Transaction.Transaction.Message.AccountKeys[0]) == "CpKdPv3L8HGcgzbBNY9tDH3CNB7DavXma86VfEfSVfEg" {
-			globals.RecordLandedSlot(resp.GetTransaction().GetSlot())
-			return globals.TradedToken{}, true
-		} else {
+		if streamName == "wallet" {
+			tradeLoop.RecordLandedSlot(resp.GetTransaction().GetSlot())
+			// fmt.Println(tradeLoop.LandedSlots)
+
+			return nil, false
+		}
+
+		if streamName == "main" {
 			if isArbitrageTx(tx.GetTransaction().Meta.PreTokenBalances, tx.GetTransaction().Meta.PostTokenBalances, base58.Encode(tx.Transaction.Transaction.Message.AccountKeys[0])) {
 
-				//cu used
-				// fmt.Println(resp)
 				cuUsed := resp.GetTransaction().GetTransaction().Meta.GetComputeUnitsConsumed()
-				// totalFee := resp.GetTransaction().GetTransaction().Meta.Fee
 
-				//cu limit and price
 				for _, instr := range resp.GetTransaction().GetTransaction().Transaction.Message.Instructions {
 					programIdIndex := instr.ProgramIdIndex
 					programId := resp.GetTransaction().GetTransaction().Transaction.Message.AccountKeys[programIdIndex]
 
 					if base58.Encode(programId) == "ComputeBudget111111111111111111111111111111" && len(instr.Data) > 0 {
 						ixData := instr.Data
-						// First byte indicates instruction type
 						switch ixData[0] {
 						case 0x02:
-							// CU limit (uint32 LE starts from byte 1)
 							if len(ixData) >= 5 {
 								cuLimit = uint64(ixData[1]) | uint64(ixData[2])<<8 | uint64(ixData[3])<<16 | uint64(ixData[4])<<24
-								// fmt.Printf("CU Limit: %d\n", cuLimit)
 							}
 						case 0x03:
-							// CU price (uint64 LE starts from byte 1)
 							if len(ixData) >= 9 {
 								cuPrice = uint64(ixData[1]) | uint64(ixData[2])<<8 | uint64(ixData[3])<<16 | uint64(ixData[4])<<24 |
 									uint64(ixData[5])<<32 | uint64(ixData[6])<<40 | uint64(ixData[7])<<48 | uint64(ixData[8])<<56
-								// fmt.Printf("CU Price (microLamports): %d\n", cuPrice)
 							}
 						}
 					}
 				}
-				//token
+
 				mint, _, ok := getTradedToken(tx.GetTransaction().Meta.PreTokenBalances, tx.GetTransaction().Meta.PostTokenBalances)
-				// fmt.Println(cuUsed, float64(cuUsed)/450000.0, cuPrice)
 				if ok {
-					trades := globals.TradedToken{
+					trades := &globals.TradedToken{
 						Signature: printSignatures(resp.GetTransaction().Transaction.Transaction.Signatures)[0],
 						CUUsed:    cuUsed,
 						CULimit:   cuLimit,
-						CUPrice:   float64(cuUsed) / 350000.0 * float64(cuPrice), //float64(cuPrice),
+						CUPrice:   float64(cuUsed) / 350000.0 * float64(cuPrice),
 						Mint:      mint,
 						Amount:    fmt.Sprint(getTotalProfitFromTx(resp)),
 						Slot:      resp.GetTransaction().GetSlot(),
-						// Timestamp: resp.GetBlockTime().GetUnixTimestamp(), // optional
 					}
-
-					processTrade(trades)
-
-					// fmt.Println(mintTracker)
+					processTrade(*trades)
 					return trades, true
-				} else {
-					return globals.TradedToken{}, false
 				}
-
-			} else {
-				return globals.TradedToken{}, false
 			}
 		}
-	} else {
-		return globals.TradedToken{}, false
 	}
 
-	// }
+	// Default fallback if no transaction / not arbitrage / no traded token found
+	return nil, false
 }
 
 func processTrade(trade globals.TradedToken) {
@@ -385,10 +365,11 @@ func startHotMintLogger(interval time.Duration, config configLoad.Config, ctx co
 		for range ticker.C {
 			pruneOldTrades(config)
 			printHotMints(config, ctx, dw)
-			fmt.Println(float64(len(globals.LandedSlots) / 150.0))
+			// fmt.Println(float64(len(globals.LandedSlots) / 150.0))
 		}
 	}()
 }
+
 func percentileCUPrice(prices []float64, percentile float64) float64 {
 	if len(prices) == 0 {
 		return 0
@@ -438,10 +419,12 @@ func printHotMints(config configLoad.Config, ctx context.Context, dw *DualWriter
 	}
 	if len(types.HotMintsList) > 0 {
 		tradeConfig.PushToMaster(types.HotMintsList, config, ctx)
-		fmt.Println("uploaded trade list")
+
 	} else {
 		//set tradeconfigs back to 0
 		types.TradeConfigs = []types.TradeConfig{}
+		tradeLoop.TradeActive = false //reset dynamic CU flag
+
 	}
 }
 
@@ -466,15 +449,15 @@ func main() {
 	// Create a cancelable context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	startHotMintLogger(time.Duration(config.CheckInterval)*time.Second, config, ctx, dw)
 
 	initialize.Initialize(config, ctx)
+
 	// set flags
 	grpcAddr = &config.GRPCEndpoint
 	transactions = new(bool)
 	*transactions = true
-	tempSlice := config.AccountsMonitor
-	tempSlice = append(tempSlice, "CpKdPv3L8HGcgzbBNY9tDH3CNB7DavXma86VfEfSVfEg")
-	transactionsAccountsInclude = arrayFlags(tempSlice)
+	transactionsAccountsInclude = arrayFlags(config.AccountsMonitor)
 
 	if *grpcAddr == "" {
 		log.Fatalf("GRPC address is required. Please provide --endpoint parameter.")
@@ -517,8 +500,18 @@ func main() {
 	conn := grpc_connect(address, *insecureConnection)
 	defer conn.Close()
 
-	startHotMintLogger(time.Duration(config.CheckInterval)*time.Second, config, ctx, dw)
-	grpc_subscribe(ctx, conn, config)
+	// Main stream for hot mints, only successful txs
+	mainCtx, _ := context.WithCancel(ctx)
+	grpc_subscribe_named(mainCtx, conn, "main", config.AccountsMonitor, globals.ToBoolPointer(false))
+
+	// Wallet stream, allow failed txs too
+	walletCtx, _ := context.WithCancel(ctx)
+	grpc_subscribe_named(walletCtx, conn, "wallet", []string{config.TrackWallet}, globals.ToBoolPointer(true))
+
+	// Instead of blocking with select {}, wait for the context to be canceled
+	<-ctx.Done() // This will block until the cancel() is called
+
+	log.Println("Gracefully shutting down.")
 }
 
 func grpc_connect(address string, plaintext bool) *grpc.ClientConn {
@@ -542,152 +535,92 @@ func grpc_connect(address string, plaintext bool) *grpc.ClientConn {
 	return conn
 }
 
-func grpc_subscribe(ctx context.Context, conn *grpc.ClientConn, config configLoad.Config) {
-	var err error
-	client := pb.NewGeyserClient(conn)
+func grpc_subscribe_named(ctx context.Context, conn *grpc.ClientConn, streamName string, accountsToInclude []string, failedTxs *bool) {
+	globals.GlobalSubManager.Client = pb.NewGeyserClient(conn)
 
-	var subscription pb.SubscribeRequest // Ensure this is declared at the start of the function
-	// tradeChan := make(chan globals.TradedToken, config.BufferSize)
-	globals.GlobalSubManager = &globals.SubscriptionManager{
-		TradeChan: make(chan globals.TradedToken, config.BufferSize),
-	}
-	var wg sync.WaitGroup
-
-	// Start worker pool
-	for w := 0; w < config.NumWorkers; w++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			// for trade := range globals.GlobalSubManager.TradeChan {
-			// 	// TODO: Save to CSV or database, or do further analysis here
-			// 	log.Printf("[Worker %d] Trade: %+v\n", id, trade)
-			// }
-		}(w)
-	}
-
-	// Read json input or JSON file prefixed with @
-	if *jsonInput != "" {
-		var jsonData []byte
-
-		if (*jsonInput)[0] == '@' {
-			jsonData, err = os.ReadFile((*jsonInput)[1:])
-			if err != nil {
-				log.Fatalf("Error reading provided json file: %v", err)
-			}
-		} else {
-			jsonData = []byte(*jsonInput)
+	// Initialize TradeChan for the streamName if not already initialized
+	// Initialize StreamWorker for streamName if not already initialized
+	if _, ok := globals.GlobalSubManager.StreamWorkers[streamName]; !ok {
+		// Initialize a new StreamWorker with a TradeChan
+		tradeChan := make(chan globals.TradedToken, 10000) // Adjust buffer size as needed
+		worker := &globals.StreamWorker{
+			Name:      streamName,
+			Ctx:       ctx,
+			Cancel:    func() {}, // Implement cancellation logic if needed
+			Conn:      conn,
+			TradeChan: tradeChan,
 		}
-		err := json.Unmarshal(jsonData, &subscription)
-		if err != nil {
-			log.Fatalf("Error parsing JSON: %v", err)
-		}
-	} else {
-		// If no JSON provided, start with blank
-		subscription = pb.SubscribeRequest{}
+		// Add StreamWorker to GlobalSubManager
+		globals.GlobalSubManager.StreamWorkers[streamName] = worker
 	}
 
-	// Append to the provided maps (for custom subscriptions)
-	if *slots {
-		if subscription.Slots == nil {
-			subscription.Slots = make(map[string]*pb.SubscribeRequestFilterSlots)
-		}
-		subscription.Slots["slots"] = &pb.SubscribeRequestFilterSlots{}
+	// Prepare subscription request
+	subscription := &pb.SubscribeRequest{
+		Transactions: map[string]*pb.SubscribeRequestFilterTransactions{
+			streamName: {
+				Failed:         failedTxs,
+				Vote:           globals.ToBoolPointer(false),
+				AccountInclude: accountsToInclude,
+			},
+		},
 	}
 
-	// Subscribe to generic transaction stream
-	if *transactions {
-		subscription.Transactions = make(map[string]*pb.SubscribeRequestFilterTransactions)
-		subscription.Transactions["transactions_sub"] = &pb.SubscribeRequestFilterTransactions{
-			Failed: failedTransactions,
-			Vote:   voteTransactions,
-		}
-		subscription.Transactions["transactions_sub"].AccountInclude = transactionsAccountsInclude
-		subscription.Transactions["transactions_sub"].AccountExclude = transactionsAccountsExclude
-	}
+	subscriptionJson, _ := json.Marshal(&subscription)
+	log.Printf("[%s] Subscription JSON: %s", streamName, string(subscriptionJson))
 
-	// Final marshaling and logging
-	subscriptionJson, err := json.Marshal(&subscription)
+	// Connect the stream
+	stream, err := globals.GlobalSubManager.Client.Subscribe(ctx)
 	if err != nil {
-		log.Fatalf("Failed to marshal subscription request: %v", err)
-	}
-	log.Printf("Subscription request: %s", string(subscriptionJson))
-
-	// Set up the subscription request
-	if *token != "" {
-		md := metadata.New(map[string]string{"x-token": *token})
-		ctx = metadata.NewOutgoingContext(ctx, md)
+		log.Fatalf("[%s] Failed to start gRPC stream: %v", streamName, err)
 	}
 
-	stream, err := client.Subscribe(ctx)
+	// Link the stream to the worker
+	worker := globals.GlobalSubManager.StreamWorkers[streamName]
+	worker.Stream = stream // Assign the stream t
+
+	err = stream.Send(subscription)
 	if err != nil {
-		log.Fatalf("%v", err)
-	}
-	err = stream.Send(&subscription)
-	if err != nil {
-		log.Fatalf("%v", err)
+		log.Fatalf("[%s] Failed to send subscription request: %v", streamName, err)
 	}
 
-	cancelCtx, cancelFunc := context.WithCancel(ctx)
+	worker.Subscription = subscription
+	log.Printf("[%s] Subscription started: %+v", streamName, accountsToInclude)
 
-	globals.GlobalSubManager.Stream = stream
-	globals.GlobalSubManager.Context = cancelCtx
-	globals.GlobalSubManager.Cancel = cancelFunc
-	// TradeChan:           tradeChan,
-	globals.GlobalSubManager.Config = config
-	globals.GlobalSubManager.SendMutex = sync.Mutex{}
-	globals.GlobalSubManager.CurrentDLMMPools = make(map[string]bool)
-	globals.GlobalSubManager.EnableTransactions = true                         // Enable transaction subscription
-	globals.GlobalSubManager.FailedTransactions = globals.ToBoolPointer(false) // Set to subscribe to failed transactions
-	globals.GlobalSubManager.VoteTransactions = globals.ToBoolPointer(false)   // Set to subscribe to vote transactions
-	globals.GlobalSubManager.TransactionsInclude = transactionsAccountsInclude
-	globals.GlobalSubManager.TransactionsExclude = transactionsAccountsExclude
-
-	var i uint = 0
-	for {
-		select {
-		case <-globals.GlobalSubManager.Context.Done():
-			log.Println("Context cancelled, stopping subscription")
-			close(globals.GlobalSubManager.TradeChan)
-			return
-		default:
-			// Use the original stream.Recv() without a separate timeout context
-			resp, err := globals.GlobalSubManager.Stream.Recv()
-
-			if err == io.EOF {
-				close(globals.GlobalSubManager.TradeChan)
-				return
-			}
-			if err != nil {
-				if globals.GlobalSubManager.Context.Err() != nil {
-					// Context was canceled
-					log.Println("Subscription stopped due to context cancellation")
-				} else {
-					log.Fatalf("Error occurred in receiving update: %v", err)
-				}
-				close(globals.GlobalSubManager.TradeChan)
-				return
-			}
-
-			i += 1
-			// Example of how to resubscribe/update request
-			if i == *resub {
-				subscription = pb.SubscribeRequest{}
-				subscription.Slots = make(map[string]*pb.SubscribeRequestFilterSlots)
-				subscription.Slots["slots"] = &pb.SubscribeRequestFilterSlots{}
-				stream.Send(&subscription)
-			}
-			trade, ok := monitorTransactions(resp)
-			if !ok {
-				break
-			}
+	go func() {
+		for {
 			select {
-			case globals.GlobalSubManager.TradeChan <- trade:
-				// successfully queued
+			case <-ctx.Done():
+				log.Printf("[%s] Context cancelled, closing stream...", streamName)
+				return
 			default:
-				log.Println("Trade channel is full! Dropping trade.")
+				resp, err := stream.Recv()
+				if err != nil {
+					if err == io.EOF || ctx.Err() != nil {
+						log.Printf("[%s] Stream closed cleanly", streamName)
+					} else {
+						log.Printf("[%s] Stream error: %v", streamName, err)
+					}
+					return
+				}
+
+				// Process received transaction
+				trade, ok := monitorTransactions(resp, streamName)
+				if !ok || trade == nil {
+					continue
+				}
+
+				// Access the correct StreamWorker for this streamName
+				worker := globals.GlobalSubManager.StreamWorkers[streamName]
+
+				// Send trade to the correct stream's TradeChan
+				select {
+				case worker.TradeChan <- *trade:
+					// fmt.Println(trade)
+					// Successfully queued
+				default:
+					log.Printf("[%s] Trade channel is full! Dropping trade.", streamName)
+				}
 			}
 		}
-	}
-	close(globals.GlobalSubManager.TradeChan)
-	wg.Wait() // Wait for all workers to finish
+	}()
 }

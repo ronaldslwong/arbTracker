@@ -6,6 +6,7 @@ import (
 	"arbTracker/types"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"log"
 
@@ -87,8 +88,8 @@ func GetSurroundingBinPDAs(activeID int32, lbPair solana.PublicKey) ([]solana.Ac
 	curArrayID := FloorDiv(activeID, 64)
 	startArrayID := curArrayID - 1
 	endArrayID := curArrayID + 1
-	fmt.Println("start ", startArrayID)
-	fmt.Println("end ", endArrayID)
+	// fmt.Println("start ", startArrayID)
+	// fmt.Println("end ", endArrayID)
 
 	// Prepare a slice to store the AccountMetas
 	metas := make([]solana.AccountMeta, 0, endArrayID-startArrayID+1)
@@ -145,110 +146,6 @@ func FetchMeteoraDLMM(tokenCA string, mktList []string, config configLoad.Config
 
 	return returnMeteora
 }
-func UnsubscribeBinPDA(pda solana.PublicKey) {
-	key := pda.String()
-
-	globals.GlobalSubManager.SendMutex.Lock()
-	defer globals.GlobalSubManager.SendMutex.Unlock()
-
-	if _, exists := globals.GlobalSubManager.CurrentDLMMPools[key]; !exists {
-		return // Not subscribed
-	}
-
-	delete(globals.GlobalSubManager.CurrentDLMMPools, key)
-	log.Printf("[GRPC] Unsubscribing (resending full subscription without): %s", key)
-
-	// Re-send updated SubscribeRequest with all remaining PDAs
-	resendFullBinPDASubscription()
-}
-
-func resendFullBinPDASubscription() {
-	var allPDAs []string
-	for key := range globals.GlobalSubManager.CurrentDLMMPools {
-		allPDAs = append(allPDAs, key)
-	}
-	if len(allPDAs) == 0 {
-		log.Println("Warning: No DLMMPools found to subscribe.")
-	}
-
-	req := &pb.SubscribeRequest{}
-
-	if len(allPDAs) == 0 {
-		log.Println("Warning: No DLMMPools found to subscribe. Setting Accounts filter to nil.")
-		req.Accounts = nil
-	} else {
-		req.Accounts = map[string]*pb.SubscribeRequestFilterAccounts{
-			"dlmm_bins": {
-				Account: allPDAs,
-			},
-		}
-	}
-
-	// Ensure transactions are included if the flag is set
-	if globals.GlobalSubManager.EnableTransactions {
-		req.Transactions = map[string]*pb.SubscribeRequestFilterTransactions{
-			"transactions_sub": {
-				Failed:         globals.GlobalSubManager.FailedTransactions,
-				Vote:           globals.GlobalSubManager.VoteTransactions,
-				AccountInclude: globals.GlobalSubManager.TransactionsInclude,
-				AccountExclude: globals.GlobalSubManager.TransactionsExclude,
-			},
-		}
-	}
-	// Debugging: Check and log the Transactions part of the request
-	if req.Transactions != nil {
-		log.Printf("Transactions part of the subscription: %+v", req)
-	} else {
-		log.Println("Transactions part is nil or dropped!")
-	}
-
-	// Check if the stream is active
-	if globals.GlobalSubManager.Stream == nil {
-		log.Println("Stream is not initialized.")
-		return
-	}
-
-	// Send the updated subscription request
-	err := globals.GlobalSubManager.Stream.Send(req)
-	if err != nil {
-		log.Printf("Error resending full bin PDA subscription: %v", err)
-		return
-	}
-
-	log.Println("Successfully resent full bin PDA subscription.")
-}
-
-func SubscribeBinPDA(pda solana.PublicKey) {
-	key := pda.String()
-
-	globals.GlobalSubManager.SendMutex.Lock()
-	defer globals.GlobalSubManager.SendMutex.Unlock()
-
-	if globals.GlobalSubManager.CurrentDLMMPools[key] {
-		// Already subscribed
-		return
-	}
-
-	globals.GlobalSubManager.CurrentDLMMPools[key] = true
-	log.Printf("[GRPC] Subscribing to new bin PDA (resending full subscription): %s", key)
-
-	// Re-send full subscription including the new PDA
-	resendFullBinPDASubscription()
-}
-
-func ReplaceDLMMAccountSubscriptions(poolAccounts []solana.PublicKey) {
-	// Unsubscribe from all current pool subscriptions
-	for key := range globals.GlobalSubManager.CurrentDLMMPools {
-		pda, _ := solana.PublicKeyFromBase58(key)
-		UnsubscribeBinPDA(pda) // consider renaming this to UnsubscribeAccount or UnsubscribeDLMMAccount
-	}
-
-	// Subscribe to new pool accounts
-	for _, pool := range poolAccounts {
-		SubscribeBinPDA(pool) // consider renaming to SubscribeDLMMAccount
-	}
-}
-
 func UpdateDLMMActiveBin(market solana.PublicKey, activeID int32) error {
 	types.Mu.Lock()
 	defer types.Mu.Unlock()
@@ -271,5 +168,110 @@ func UpdateDLMMActiveBin(market solana.PublicKey, activeID int32) error {
 		}
 	}
 
+	return nil
+}
+
+// /////////////////
+func ReplaceDLMMAccountSubscriptions(workerName string, pda []solana.PublicKey) {
+	// Step 1: Resubscribe with an empty account list (unsubscribe from the old accounts)
+
+	globals.GlobalSubManager.SendMutex.Lock()
+	defer globals.GlobalSubManager.SendMutex.Unlock()
+	for _, key := range pda {
+		keyStr := key.String()
+		if globals.GlobalSubManager.CurrentDLMMPools[keyStr] {
+			// Already subscribed
+			return
+		}
+		globals.GlobalSubManager.CurrentDLMMPools[keyStr] = true
+
+		log.Printf("[GRPC] Subscribing to new bin PDA (resending full subscription): %s", keyStr)
+	}
+
+	err := ResubscribeEmptyAccountStream(workerName)
+	if err != nil {
+		fmt.Errorf("[GRPC] Error during resubscribe (empty): %v", err)
+	}
+	// Step 2: Resubscribe with the updated account list (subscribe to new accounts)
+	err = ResubscribeWithUpdatedAccounts(workerName)
+	if err != nil {
+		fmt.Errorf("[GRPC] Error during resubscribe (updated accounts): %v", err)
+	}
+
+}
+
+func ResubscribeEmptyAccountStream(workerName string) error {
+	worker, exists := globals.GlobalSubManager.StreamWorkers[workerName]
+	if !exists {
+		return fmt.Errorf("[GRPC] No StreamWorker found for %s", workerName)
+	}
+
+	if worker.Subscription == nil {
+		return fmt.Errorf("[GRPC] No active subscription for %s", workerName)
+	}
+
+	oldSubscription := worker.Subscription // Get the current subscription object
+
+	// Create a new subscribe request with no accounts
+	emptyRequest := &pb.SubscribeRequest{
+		Accounts: nil, // No accounts to unsubscribe from
+	}
+	emptyRequest.Transactions = oldSubscription.Transactions // Reuse the original transaction request
+
+	// Send the empty subscription request to effectively unsubscribe
+	err := worker.Stream.Send(emptyRequest)
+	if err != nil {
+		return fmt.Errorf("[GRPC] Failed to unsubscribe from stream %s: %v", workerName, err)
+	}
+
+	// Reset the subscription in the worker
+	// worker.Subscription = nil
+	log.Printf("[GRPC] Successfully unsubscribed (cleared accounts) for %s", workerName)
+	return nil
+}
+
+func ResubscribeWithUpdatedAccounts(workerName string) error {
+	worker, exists := globals.GlobalSubManager.StreamWorkers[workerName]
+	if !exists {
+		return fmt.Errorf("[GRPC] No StreamWorker found for %s", workerName)
+	}
+
+	var allPDAs []string
+	for key := range globals.GlobalSubManager.CurrentDLMMPools {
+		allPDAs = append(allPDAs, key)
+	}
+	if len(allPDAs) == 0 {
+		log.Println("Warning: No DLMMPools found to subscribe.")
+	}
+
+	oldSubscription := worker.Subscription // Get the current subscription object
+
+	// Create the updated subscribe request with the new accounts
+	updatedRequest := &pb.SubscribeRequest{
+		Accounts: map[string]*pb.SubscribeRequestFilterAccounts{
+			"dlmm_bins": {
+				Account: allPDAs, // New account list
+			},
+		},
+	}
+	updatedRequest.Transactions = oldSubscription.Transactions // Reuse the original transaction request
+
+	// Resend the subscription with the new accounts
+	err := worker.Stream.Send(updatedRequest)
+	if err != nil {
+		return fmt.Errorf("[GRPC] Failed to resubscribe with updated accounts for %s: %v", workerName, err)
+	}
+
+	// Update the subscription in the worker
+	if worker.Subscription == nil {
+		worker.Subscription = &pb.SubscribeRequest{}
+	}
+
+	// You can add more logic here if necessary (e.g., transactions, other fields)
+	worker.Subscription.Accounts = updatedRequest.Accounts
+	log.Printf("[GRPC] Successfully resubscribed with updated accounts for %s", workerName)
+
+	subscriptionJson, _ := json.Marshal(&updatedRequest)
+	log.Printf("[%s] Subscription JSON: %s", "main", string(subscriptionJson))
 	return nil
 }

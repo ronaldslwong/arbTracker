@@ -46,6 +46,8 @@ func Initialize(config configLoad.Config, ctx context.Context) {
 
 	tradeLoop.StartTradeLoop(ctx, config)
 
+	tradeLoop.StartDynamicCULoop(config)
+
 }
 
 func LoadKeypairFromJSON(filePath string) (*solana.PrivateKey, error) {
