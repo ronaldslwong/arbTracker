@@ -1,17 +1,11 @@
 package onchainSMB
 
 import (
-	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 
 	"github.com/gagliardetto/solana-go"
 )
-
-func getAnchorDiscriminator(name string) []byte {
-	hash := sha256.Sum256([]byte("global:" + name))
-	return hash[:8]
-}
 
 func CreateKaminoBorrowInstruction(
 	amount uint64,

@@ -24,11 +24,11 @@ func FetchTradeConfigForMint(hotMint types.HotMints, cuLimit uint64, poolLiqFilt
 	if len(mktList.Meteora) > 0 && len(mktList.Pumpswap) > 0 {
 		pump := FetchPumpPools(mktList.TokenCa, mktList.Pumpswap, config)
 		// fmt.Println("asfdasdf", mktList.Meteora[0])
-		var temp []string
-		temp = append(temp, mktList.Meteora[0])
-		temp = append(temp, mktList.Meteora[1])
-		// temp = append(temp, mktList.Meteora[2])
-		meteora := FetchMeteoraDLMM(mktList.TokenCa, temp, config, ctx)
+		// var temp []string
+		// temp = append(temp, mktList.Meteora[0])
+		// temp = append(temp, mktList.Meteora[1])
+		// // temp = append(temp, mktList.Meteora[2])
+		meteora := FetchMeteoraDLMM(mktList.TokenCa, mktList.Meteora, config, ctx)
 		var raydium []types.RaydiumPool
 		raydium = append(raydium, types.RaydiumPool{})
 		var raydiumCP []types.RaydiumCPPool
@@ -54,19 +54,21 @@ func FetchTradeConfigForMint(hotMint types.HotMints, cuLimit uint64, poolLiqFilt
 func FetchPumpPools(tokenCA string, mktList []string, config configLoad.Config) []types.PumpPool {
 	var returnPump []types.PumpPool
 
-	for _, x := range mktList {
-		pool, xAccount, sOLAccount, _ := getPoolTokens(x, tokenCA, config)
-		tempPump := types.PumpPool{
-			ProgramId:      solana.MustPublicKeyFromBase58("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"),  // Pump program ID
-			GlobalConfig:   solana.MustPublicKeyFromBase58("ADyA8hdefvWN2dbGGWFotbzWxrAvLW83WG6QCVXvJKqw"), // Pump global config
-			Authority:      solana.MustPublicKeyFromBase58("GS4CU59F31iL7aR2Q8zVS8DRrcRnXX1yjQ66TqNVQnaR"), // Pump authority
-			FeeWallet:      solana.MustPublicKeyFromBase58("JCRGumoE9Qi5BBgULTgdgTLjSgkCMSbF62ZZfGs84JeU"), // Pump fee wallet
-			Pool:           solana.MustPublicKeyFromBase58(pool),
-			XAccount:       solana.MustPublicKeyFromBase58(xAccount),
-			SOLAccount:     solana.MustPublicKeyFromBase58(sOLAccount),
-			FeeTokenWallet: solana.MustPublicKeyFromBase58("DWpvfqzGWuVy9jVSKSShdM2733nrEsnnhsUStYbkj6Nn"),
+	for numMkts, x := range mktList {
+		if numMkts < config.PumpMkts {
+			pool, xAccount, sOLAccount, _ := getPoolTokens(x, tokenCA, config)
+			tempPump := types.PumpPool{
+				ProgramId:      solana.MustPublicKeyFromBase58("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"),  // Pump program ID
+				GlobalConfig:   solana.MustPublicKeyFromBase58("ADyA8hdefvWN2dbGGWFotbzWxrAvLW83WG6QCVXvJKqw"), // Pump global config
+				Authority:      solana.MustPublicKeyFromBase58("GS4CU59F31iL7aR2Q8zVS8DRrcRnXX1yjQ66TqNVQnaR"), // Pump authority
+				FeeWallet:      solana.MustPublicKeyFromBase58("JCRGumoE9Qi5BBgULTgdgTLjSgkCMSbF62ZZfGs84JeU"), // Pump fee wallet
+				Pool:           solana.MustPublicKeyFromBase58(pool),
+				XAccount:       solana.MustPublicKeyFromBase58(xAccount),
+				SOLAccount:     solana.MustPublicKeyFromBase58(sOLAccount),
+				FeeTokenWallet: solana.MustPublicKeyFromBase58("DWpvfqzGWuVy9jVSKSShdM2733nrEsnnhsUStYbkj6Nn"),
+			}
+			returnPump = append(returnPump, tempPump)
 		}
-		returnPump = append(returnPump, tempPump)
 	}
 
 	return returnPump

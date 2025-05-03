@@ -381,7 +381,9 @@ func percentileCUPrice(prices []float64, percentile float64) float64 {
 func extractCUPrices(trades []MintTrade) []float64 {
 	var prices []float64
 	for _, t := range trades {
-		prices = append(prices, float64(t.CuPrice))
+		if t.CuPrice > 0 {
+			prices = append(prices, float64(t.CuPrice))
+		}
 	}
 	return prices
 }

@@ -36,6 +36,14 @@ type DexPairData struct {
 	Volume   float64  `json:"volume"`
 }
 
+type ByLiquidityQuote DexScreenerResponse
+
+func (a ByLiquidityQuote) Len() int      { return len(a) }
+func (a ByLiquidityQuote) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByLiquidityQuote) Less(i, j int) bool {
+	return a[i].Liquidity.Quote > a[j].Liquidity.Quote // descending
+}
+
 func (d DexScreenerResponse) Len() int {
 	return len(d)
 }
@@ -74,7 +82,10 @@ func QueryDexScreener(token_ca string, poolVolFilter float64, poolLiqFilter floa
 		fmt.Println("Response body:", string(body)) // Debugging output
 		return DexPairData{}
 	}
-	sort.Sort(data)
+	// sort.Sort(data)
+	sort.Sort(ByLiquidityQuote(data))
+
+	// fmt.Println(data)
 
 	validDexIds := map[string]bool{"pumpswap": true, "raydium": true, "meteora": true}
 	var meteora []string

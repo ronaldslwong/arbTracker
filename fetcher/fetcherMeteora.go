@@ -116,29 +116,31 @@ func GetSurroundingBinPDAs(activeID int32, lbPair solana.PublicKey) ([]solana.Ac
 func FetchMeteoraDLMM(tokenCA string, mktList []string, config configLoad.Config, ctx context.Context) []types.DLMMTriple {
 	var returnMeteora []types.DLMMTriple
 
-	for _, x := range mktList {
-		pool, xAccount, sOLAccount, _ := getPoolTokens(x, tokenCA, config)
-		fmt.Println(pool)
-		tempPool := solana.MustPublicKeyFromBase58(pool)
-		binIds, err := DecodeActiveBinID(tempPool)
-		fmt.Println("active id: ", binIds)
-		binArrays, err := GetSurroundingBinPDAs(binIds, tempPool) //, int32(config.MaxBins))
-		fmt.Println(binArrays)
-		if err != nil {
-			log.Printf("error getting bin arrays: %v", err)
-			return []types.DLMMTriple{}
+	for numMkts, x := range mktList {
+		if numMkts < config.MeteoraMkts {
+			pool, xAccount, sOLAccount, _ := getPoolTokens(x, tokenCA, config)
+			fmt.Println(pool)
+			tempPool := solana.MustPublicKeyFromBase58(pool)
+			binIds, err := DecodeActiveBinID(tempPool)
+			fmt.Println("active id: ", binIds)
+			binArrays, err := GetSurroundingBinPDAs(binIds, tempPool) //, int32(config.MaxBins))
+			fmt.Println(binArrays)
+			if err != nil {
+				log.Printf("error getting bin arrays: %v", err)
+				return []types.DLMMTriple{}
+			}
+			tempPump := types.DLMMTriple{
+				DlmmProgramId:      solana.MustPublicKeyFromBase58("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"),
+				DlmmEventAuthority: solana.MustPublicKeyFromBase58("D1ZN9Wj1fRSUQfCjhvnu1hqDMT7hzjzBBpi12nVniYD6"),
+				Pair:               tempPool,
+				XVault:             solana.MustPublicKeyFromBase58(xAccount),
+				SOLVault:           solana.MustPublicKeyFromBase58(sOLAccount),
+				Oracle:             GetOracle(pool),
+				BinID:              binIds,
+				BinArrays:          binArrays,
+			}
+			returnMeteora = append(returnMeteora, tempPump)
 		}
-		tempPump := types.DLMMTriple{
-			DlmmProgramId:      solana.MustPublicKeyFromBase58("LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"),
-			DlmmEventAuthority: solana.MustPublicKeyFromBase58("D1ZN9Wj1fRSUQfCjhvnu1hqDMT7hzjzBBpi12nVniYD6"),
-			Pair:               tempPool,
-			XVault:             solana.MustPublicKeyFromBase58(xAccount),
-			SOLVault:           solana.MustPublicKeyFromBase58(sOLAccount),
-			Oracle:             GetOracle(pool),
-			BinID:              binIds,
-			BinArrays:          binArrays,
-		}
-		returnMeteora = append(returnMeteora, tempPump)
 
 	}
 

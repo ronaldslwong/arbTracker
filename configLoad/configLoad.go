@@ -33,6 +33,8 @@ type Config struct {
 	TrackWallet           string   `toml:trackWallet`
 	SlotsToCheck          int      `toml:slotsToCheck`
 	AltAddress            string   `toml:altAddress`
+	MeteoraMkts           int      `toml:meteoraMkts`
+	PumpMkts              int      `toml:pumpMkts`
 }
 
 // LoadConfig reads from the TOML file and returns a Config struct
