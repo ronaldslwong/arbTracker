@@ -7,6 +7,7 @@ import (
 	"math"
 	"time"
 
+	"arbTracker/alt"
 	blockhashrefresh "arbTracker/blockhashRefresh"
 	"arbTracker/configLoad"
 	"arbTracker/fetcher"
@@ -54,8 +55,8 @@ func PushToMaster(mints []types.HotMints, config configLoad.Config, ctx context.
 				log.Printf("Failed to fetch config for mint %s: %v", mintStat.TokenCA, err)
 				continue
 			} else {
+				// add alt
 				newConfigs = append(newConfigs, *newConfig)
-				fmt.Println("uploaded trade list")
 
 				// update flags for dynamic CU tracker
 				if !tradeLoop.TradeActive { //no trades before, turned on now
@@ -66,13 +67,12 @@ func PushToMaster(mints []types.HotMints, config configLoad.Config, ctx context.
 
 		}
 	}
-	types.TradeConfigs = newConfigs
 
 	// if len(newConfigs) > 0 {
 	// 	tradeLoop.SendTestTrades([]int{10000, 50000, 100000, 300000, 500000, 700000}, config, newConfigs[0])
 	// }
+	fmt.Println(len(newConfigs))
 	if len(newConfigs) > 0 {
-
 		var accountSub []solana.PublicKey
 
 		for _, x := range newConfigs {
@@ -82,7 +82,22 @@ func PushToMaster(mints []types.HotMints, config configLoad.Config, ctx context.
 		}
 
 		go fetcher.ReplaceDLMMAccountSubscriptions("main", accountSub)
+
+		// y := 2
+		// if y == 2 {
+		altAdd, _ := solana.PublicKeyFromBase58(config.AltAddress)
+		fmt.Println("Pushing new entries to ALT..", altAdd)
+		alt.SendExtendALTTransaction(globals.RPCClient, altAdd, &solana.Wallet{
+			PrivateKey: *globals.PrivateKey,
+		}, newConfigs)
+
+		fmt.Println("Refreshing ALT..")
+		alt.InitLoadAlt(ctx, globals.RPCClient, altAdd.String())
+		// }
+		types.TradeConfigs = newConfigs
+		fmt.Println("uploaded trade list")
 	}
+
 	// Replace the global slice with the cleaned-up one
 	// fmt.Println(types.TradeConfigs)
 }

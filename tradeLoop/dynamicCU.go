@@ -19,12 +19,12 @@ var TradeActive bool = false        // To track if any trades are active
 var LastTradeTime time.Time         // Track the last trade time for turning tracking on/off
 
 // Call this on each landed tx from your wallet
-func RecordLandedSlot(slot uint64) {
+func RecordLandedSlot(slot uint64, config configLoad.Config) {
 	LandedMu.Lock()
 	defer LandedMu.Unlock()
 
 	LandedSlots[slot] = struct{}{}
-	cutoff := slot - 150 // last 150 slots only
+	cutoff := slot - uint64(config.SlotsToCheck) // last 150 slots only
 
 	// Clean up old entries
 	for s := range LandedSlots {
@@ -70,7 +70,7 @@ func StartDynamicCULoop(config configLoad.Config) {
 			case <-ticker.C:
 				UpdateTrackingState()
 				if dynamicCUActive {
-					landingRate := float64(len(LandedSlots)) / 150.0
+					landingRate := float64(len(LandedSlots)) / float64(config.SlotsToCheck)
 					updateCUPriceMultiplier(landingRate, config)
 				}
 			}

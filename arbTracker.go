@@ -250,7 +250,7 @@ func isArbitrageTx(preBalances, postBalances []*pb.TokenBalance, owner string) b
 
 	return wsolGain > 0
 }
-func monitorTransactions(resp *pb.SubscribeUpdate, streamName string) (*globals.TradedToken, bool) {
+func monitorTransactions(resp *pb.SubscribeUpdate, streamName string, config configLoad.Config) (*globals.TradedToken, bool) {
 	var cuLimit, cuPrice uint64
 
 	if accountData := resp.GetAccount(); accountData != nil {
@@ -262,7 +262,7 @@ func monitorTransactions(resp *pb.SubscribeUpdate, streamName string) (*globals.
 
 	if tx := resp.GetTransaction(); tx != nil {
 		if streamName == "wallet" {
-			tradeLoop.RecordLandedSlot(resp.GetTransaction().GetSlot())
+			tradeLoop.RecordLandedSlot(resp.GetTransaction().GetSlot(), config)
 			// fmt.Println(tradeLoop.LandedSlots)
 
 			return nil, false
@@ -424,6 +424,7 @@ func printHotMints(config configLoad.Config, ctx context.Context, dw *DualWriter
 		//set tradeconfigs back to 0
 		types.TradeConfigs = []types.TradeConfig{}
 		tradeLoop.TradeActive = false //reset dynamic CU flag
+		tradeLoop.LastTradeTime = time.Now()
 
 	}
 }
@@ -502,11 +503,11 @@ func main() {
 
 	// Main stream for hot mints, only successful txs
 	mainCtx, _ := context.WithCancel(ctx)
-	grpc_subscribe_named(mainCtx, conn, "main", config.AccountsMonitor, globals.ToBoolPointer(false))
+	grpc_subscribe_named(mainCtx, conn, "main", config.AccountsMonitor, globals.ToBoolPointer(false), config)
 
 	// Wallet stream, allow failed txs too
 	walletCtx, _ := context.WithCancel(ctx)
-	grpc_subscribe_named(walletCtx, conn, "wallet", []string{config.TrackWallet}, globals.ToBoolPointer(true))
+	grpc_subscribe_named(walletCtx, conn, "wallet", []string{config.TrackWallet}, globals.ToBoolPointer(true), config)
 
 	// Instead of blocking with select {}, wait for the context to be canceled
 	<-ctx.Done() // This will block until the cancel() is called
@@ -535,7 +536,7 @@ func grpc_connect(address string, plaintext bool) *grpc.ClientConn {
 	return conn
 }
 
-func grpc_subscribe_named(ctx context.Context, conn *grpc.ClientConn, streamName string, accountsToInclude []string, failedTxs *bool) {
+func grpc_subscribe_named(ctx context.Context, conn *grpc.ClientConn, streamName string, accountsToInclude []string, failedTxs *bool, config configLoad.Config) {
 	globals.GlobalSubManager.Client = pb.NewGeyserClient(conn)
 
 	// Initialize TradeChan for the streamName if not already initialized
@@ -604,7 +605,7 @@ func grpc_subscribe_named(ctx context.Context, conn *grpc.ClientConn, streamName
 				}
 
 				// Process received transaction
-				trade, ok := monitorTransactions(resp, streamName)
+				trade, ok := monitorTransactions(resp, streamName, config)
 				if !ok || trade == nil {
 					continue
 				}

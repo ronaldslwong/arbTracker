@@ -5,8 +5,10 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
+	"arbTracker/alt"
 	blockhashrefresh "arbTracker/blockhashRefresh"
 	"arbTracker/configLoad"
 	"arbTracker/globals"
@@ -15,6 +17,7 @@ import (
 	"github.com/gagliardetto/solana-go"                                        // Updated import
 	compute_budget "github.com/gagliardetto/solana-go/programs/compute-budget" // Updated import
 	"github.com/gagliardetto/solana-go/rpc"
+	// Updated import
 )
 
 // Struct to match the private key JSON format
@@ -84,10 +87,10 @@ func GenerateOnchainSwapInstruction(
 
 		for _, p := range pool.PumpPools {
 			accounts = append(accounts,
-				solana.NewAccountMeta(p.ProgramId, true, false),
+				solana.NewAccountMeta(p.ProgramId, false, false),
 				solana.NewAccountMeta(p.GlobalConfig, false, false),
 				solana.NewAccountMeta(p.Authority, false, false),
-				solana.NewAccountMeta(p.FeeWallet, true, false),
+				solana.NewAccountMeta(p.FeeWallet, false, false),
 				solana.NewAccountMeta(p.Pool, false, false),
 				solana.NewAccountMeta(p.XAccount, true, false),
 				solana.NewAccountMeta(p.SOLAccount, true, false),
@@ -128,7 +131,7 @@ func GenerateOnchainSwapInstruction(
 
 }
 
-func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier float64) solana.Signature {
+func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier float64) { //solana.Signature {
 	start := time.Now()
 
 	walletPubkey := globals.PrivateKey.PublicKey()
@@ -186,34 +189,15 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier
 
 	// t25 := time.Now()
 
-	lookupTableAccount := globals.AltAddress // ALT public key you're using
-
-	tableKeys := []solana.PublicKey{}
-	writableIndexes := []uint8{}
-	readonlyIndexes := []uint8{}
-
-	for i, key := range lookupTableAccount.Addresses {
-		for _, ix := range []solana.Instruction{limitIx, priceIx, instruction} {
-			for _, acct := range ix.Accounts() {
-				if acct.PublicKey.Equals(key) {
-					tableKeys = append(tableKeys, key)
-					if acct.IsWritable {
-						writableIndexes = append(writableIndexes, uint8(i))
-					} else {
-						readonlyIndexes = append(readonlyIndexes, uint8(i))
-					}
-				}
-			}
-		}
-	}
-
 	tx, err := solana.NewTransaction(
 		[]solana.Instruction{limitIx, priceIx, instruction}, // pass your instruction here
 		blockhashrefresh.GetCachedBlockhash(),
 		solana.TransactionPayer(walletPubkey),
 		solana.TransactionAddressTables(map[solana.PublicKey]solana.PublicKeySlice{
-			globals.AltPubKey: lookupTableAccount.Addresses, // include all, or just filtered subset
-		}))
+			solana.MustPublicKeyFromBase58(config.AltAddress):                              alt.AltMap[solana.MustPublicKeyFromBase58(config.AltAddress)].Addresses, // include all, or just filtered subset
+			solana.MustPublicKeyFromBase58("4sKLJ1Qoudh8PJyqBeuKocYdsZvxTcRShUt9aKqwhgvC"): alt.AltMap[solana.MustPublicKeyFromBase58("4sKLJ1Qoudh8PJyqBeuKocYdsZvxTcRShUt9aKqwhgvC")].Addresses,
+		}),
+	)
 	if err != nil {
 		log.Fatalf("failed to create transaction: %v", err)
 	}
@@ -233,34 +217,33 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier
 		log.Fatalf("failed to sign transaction: %v", err)
 	}
 
-	// t4 := time.Now()
-	// txBytes, err := tx.MarshalBinary()
-	// fmt.Printf("First byte: %v\n", txBytes[0])
-	// fmt.Printf("Transaction version: %v\n", tx.Message.GetVersion())
+	BlastTx(tx, start)
+}
+
+func BlastTx(tx *solana.Transaction, start time.Time) {
+	var wg sync.WaitGroup
 
 	// Send it
-	txSig, err := globals.RPCClient.SendTransactionWithOpts(
-		context.TODO(),
-		tx,
-		rpc.TransactionOpts{
-			SkipPreflight:       true,
-			PreflightCommitment: rpc.CommitmentFinalized,
-		},
-	)
+	for _, x := range globals.SendClient {
+		wg.Add(1)
+		go func(c *rpc.Client) {
 
-	finish := time.Now()
-
-	// fmt.Println(t1.Sub(start))
-	// fmt.Println(t2.Sub(t1))
-	// fmt.Println(t25.Sub(t2))
-	// fmt.Println(t3.Sub(t25))
-	// fmt.Println(t4.Sub(t3))
-	// fmt.Println(finish.Sub(t4))
-	// fmt.Println("Total tx submission time: ", finish.Sub(start))
-	if err != nil {
-		log.Fatalf("failed to send transaction: %v", err)
+			txSig, err := x.SendTransactionWithOpts(
+				context.TODO(),
+				tx,
+				rpc.TransactionOpts{
+					SkipPreflight:       true,
+					PreflightCommitment: rpc.CommitmentFinalized,
+				},
+			)
+			if err != nil {
+				log.Fatalf("failed to send transaction: %v", err)
+			}
+			finish := time.Now()
+			fmt.Println(time.Now().Format("2006-01-02 15:04:05.999"), " Transaction sent:", txSig, "Total tx submission time: ", finish.Sub(start))
+		}(x)
 	}
+	// return txSig
+	wg.Wait()
 
-	fmt.Println(time.Now().Format("2006-01-02 15:04:05.999"), " Transaction sent:", txSig, "Total tx submission time: ", finish.Sub(start))
-	return txSig
 }

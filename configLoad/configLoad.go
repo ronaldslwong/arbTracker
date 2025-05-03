@@ -11,6 +11,7 @@ import (
 type Config struct {
 	GRPCEndpoint          string   `toml:"grpcEndpoint"`
 	RPCEndpoint           string   `toml:"rpcEndpoint"`
+	SendRPC               []string `toml:sendRPC`
 	BufferSize            int      `toml:"bufferSize"`
 	NumWorkers            int      `toml:"numWorkers"`
 	WindowSeconds         int      `toml:"windowSeconds"`
@@ -30,6 +31,8 @@ type Config struct {
 	TargetMaxLandingRate  float64  `toml:targetMaxLandingRate`
 	PriceAdjustmentFactor float64  `toml:priceAdjustmentFactor`
 	TrackWallet           string   `toml:trackWallet`
+	SlotsToCheck          int      `toml:slotsToCheck`
+	AltAddress            string   `toml:altAddress`
 }
 
 // LoadConfig reads from the TOML file and returns a Config struct

@@ -23,6 +23,11 @@ func Initialize(config configLoad.Config, ctx context.Context) {
 	globals.RPCClient = rpc.New(config.RPCEndpoint)
 	globals.TradeInterval = config.LoopInterval
 
+	//load up send rpc
+	for _, x := range config.SendRPC {
+		globals.SendClient = append(globals.SendClient, rpc.New(x))
+	}
+
 	// // Setup logger
 	// Logger = log.New(os.Stdout, "[arb] ", log.LstdFlags|log.Lshortfile)
 
@@ -35,14 +40,11 @@ func Initialize(config configLoad.Config, ctx context.Context) {
 	if err != nil {
 		log.Fatalf("failed to load private key: %v", err)
 	}
-
-	//load address table
-	globals.AltAddress, _ = alt.LoadAlt(ctx, globals.RPCClient)
-	if err != nil {
-		log.Fatalf("failed to load ALT: %v", err)
-	}
-
-	globals.AltPubKey = solana.MustPublicKeyFromBase58("4sKLJ1Qoudh8PJyqBeuKocYdsZvxTcRShUt9aKqwhgvC")
+	//load ALTs
+	//basic table
+	alt.InitLoadAlt(ctx, globals.RPCClient, "4sKLJ1Qoudh8PJyqBeuKocYdsZvxTcRShUt9aKqwhgvC")
+	//configured table
+	alt.InitLoadAlt(ctx, globals.RPCClient, config.AltAddress)
 
 	tradeLoop.StartTradeLoop(ctx, config)
 

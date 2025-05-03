@@ -23,10 +23,10 @@ func FetchTradeConfigForMint(hotMint types.HotMints, cuLimit uint64, poolLiqFilt
 	// raydiumCP, _ := FetchRaydiumCPPools(mint)
 	if len(mktList.Meteora) > 0 && len(mktList.Pumpswap) > 0 {
 		pump := FetchPumpPools(mktList.TokenCa, mktList.Pumpswap, config)
-		fmt.Println("asfdasdf", mktList.Meteora[0])
+		// fmt.Println("asfdasdf", mktList.Meteora[0])
 		var temp []string
 		temp = append(temp, mktList.Meteora[0])
-		// temp = append(temp, mktList.Meteora[1])
+		temp = append(temp, mktList.Meteora[1])
 		// temp = append(temp, mktList.Meteora[2])
 		meteora := FetchMeteoraDLMM(mktList.TokenCa, temp, config, ctx)
 		var raydium []types.RaydiumPool

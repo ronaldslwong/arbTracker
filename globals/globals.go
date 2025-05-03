@@ -20,7 +20,6 @@ var (
 	TradeInterval int
 	PrivateKey    *solana.PrivateKey
 	AltAddress    *addresslookuptable.AddressLookupTableState
-	AltPubKey     solana.PublicKey
 	// Logger        *log.Logger
 	// add more global variables as needed
 	SubscribedBinPDAs = struct {
@@ -28,6 +27,7 @@ var (
 		Pdas map[string]bool
 	}{Pdas: make(map[string]bool)}
 	// GlobalSubManager *SubscriptionManager
+	SendClient []*rpc.Client
 )
 
 type TradedToken struct {
@@ -41,23 +41,6 @@ type TradedToken struct {
 	Timestamp int64 // unix timestamp, if available
 }
 
-// type SubscriptionManager struct {
-// 	Stream    pb.Geyser_SubscribeClient
-// 	Context   context.Context
-// 	Cancel    context.CancelFunc
-// 	TradeChan chan TradedToken
-// 	Config    configLoad.Config
-// 	SendMutex sync.Mutex
-// 	// Optional: track current subscribed PDAs
-// 	CurrentDLMMPools map[string]bool
-
-//		// Add these fields
-//		EnableTransactions  bool
-//		FailedTransactions  *bool
-//		VoteTransactions    *bool
-//		TransactionsInclude []string
-//		TransactionsExclude []string
-//	}
 type StreamWorker struct {
 	Name         string
 	Ctx          context.Context

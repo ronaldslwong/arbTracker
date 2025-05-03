@@ -13,7 +13,7 @@ import (
 
 func StartBlockhashRefresher(ctx context.Context, client *rpc.Client) {
 	go func() {
-		ticker := time.NewTicker(150 * time.Millisecond)
+		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
 
 		for {
@@ -21,7 +21,7 @@ func StartBlockhashRefresher(ctx context.Context, client *rpc.Client) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				resp, err := client.GetLatestBlockhash(ctx, rpc.CommitmentFinalized)
+				resp, err := client.GetLatestBlockhash(ctx, rpc.CommitmentProcessed)
 				if err != nil {
 					log.Printf("Blockhash fetch error: %v", err)
 					continue
