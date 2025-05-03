@@ -190,7 +190,7 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier
 	// t25 := time.Now()
 
 	tx, err := solana.NewTransaction(
-		[]solana.Instruction{limitIx, priceIx, instruction}, // pass your instruction here
+		[]solana.Instruction{limitIx, priceIx, CreateKaminoBorrowInstruction(1000000000000), instruction, CreateKaminoRepayInstruction(1000000000000)}, // pass your instruction here
 		blockhashrefresh.GetCachedBlockhash(),
 		solana.TransactionPayer(walletPubkey),
 		solana.TransactionAddressTables(map[solana.PublicKey]solana.PublicKeySlice{

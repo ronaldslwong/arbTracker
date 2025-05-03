@@ -125,12 +125,6 @@ func BuildExtendALTInstruction(
 		0, 0, 0, // First 4 bytes of metadata (all zeros)
 	}
 
-	// Little-endian encoded u64 count of addresses
-	// addressCount := uint64(len(newAddresses))
-	// countBytes := make([]byte, 8)
-	// binary.LittleEndian.PutUint64(countBytes, addressCount)
-	// data = append(data, countBytes...)
-
 	count := uint64(len(newAddresses) - 1)
 	// count := uint64(3)
 	fmt.Println(len(newAddresses))
