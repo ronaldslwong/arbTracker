@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/gagliardetto/solana-go"
@@ -125,7 +126,7 @@ func BuildExtendALTInstruction(
 		0, 0, 0, // First 4 bytes of metadata (all zeros)
 	}
 
-	count := uint64(len(newAddresses) - 1)
+	count := uint64(math.Max(float64(len(newAddresses)-1), 0))
 	// count := uint64(3)
 	fmt.Println(len(newAddresses))
 	countBytes := make([]byte, 8)
@@ -142,7 +143,7 @@ func BuildExtendALTInstruction(
 		}
 	}
 
-	fmt.Printf("Instruction Data (hex): %x\n", data)
+	// fmt.Printf("Instruction Data (hex): %x\n", data)
 	// fmt.Println(newAddresses)
 	programID := solana.MustPublicKeyFromBase58("AddressLookupTab1e1111111111111111111111111")
 

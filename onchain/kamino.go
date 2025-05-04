@@ -9,6 +9,7 @@ import (
 
 func CreateKaminoBorrowInstruction(
 	amount uint64,
+	wallet solana.PublicKey,
 ) *solana.GenericInstruction {
 
 	// append amount
@@ -21,7 +22,7 @@ func CreateKaminoBorrowInstruction(
 	// data := append(discriminator, amountBytes...)
 
 	accounts := []*solana.AccountMeta{
-		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("CpKdPv3L8HGcgzbBNY9tDH3CNB7DavXma86VfEfSVfEg"), true, true), //obligation
+		solana.NewAccountMeta(wallet, true, true), //obligation
 		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("9DrvZvyWh1HuAoZxvYWMvkf2XCzryCpGgHqrMjyDWpmo"), false, false),
 		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF"), false, false),
 		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("d4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q"), true, false),
@@ -44,6 +45,7 @@ func CreateKaminoBorrowInstruction(
 
 func CreateKaminoRepayInstruction(
 	amount uint64,
+	wallet solana.PublicKey,
 ) *solana.GenericInstruction {
 
 	amt := make([]byte, 8)
@@ -53,10 +55,10 @@ func CreateKaminoRepayInstruction(
 	data = append(data, 0x02)
 
 	accounts := []*solana.AccountMeta{
-		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("CpKdPv3L8HGcgzbBNY9tDH3CNB7DavXma86VfEfSVfEg"), true, true), //obligation
+		solana.NewAccountMeta(wallet, true, true), //obligation
 		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("9DrvZvyWh1HuAoZxvYWMvkf2XCzryCpGgHqrMjyDWpmo"), false, false),
-		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF"), false, false),
-		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("d4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q"), true, false),
+		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF"), false, false), //
+		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("d4A2prbA2whesmvHaL88BH6Ewn5N4bTSU2Ze8P6Bc4Q"), true, false),   //
 		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112"), false, false),
 		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("GafNuUXj9rxGLn4y79dPu6MHSuPWeJR6UtTWuexpGh3U"), true, false),
 		solana.NewAccountMeta(solana.MustPublicKeyFromBase58("6MF8zKwWjrg5Rbt5We8y9ypu7aQzGbc2JHrAZSJiBNCF"), true, false),

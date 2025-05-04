@@ -24,12 +24,15 @@ func StartTradeLoop(ctx context.Context, config configLoad.Config) {
 			case <-ticker.C:
 				trades := types.GetAllConfigs() // Safely snapshot current TradeConfigs
 
-				for _, trade := range trades {
-					go func(t types.TradeConfig) {
+				// for _, trade := range trades {
+				if len(trades) > 0 {
+
+					go func(t []types.TradeConfig) {
 						onchainSMB.SendTx(config, t, CurrentMultiplier)
 
-					}(trade)
+					}(trades)
 				}
+				// }
 			}
 		}
 	}()

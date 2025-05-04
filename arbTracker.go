@@ -407,19 +407,29 @@ func printHotMints(config configLoad.Config, ctx context.Context, dw *DualWriter
 	})
 
 	types.HotMintsList = nil //clear hotmints to reload
-	for i, item := range list {
-		if i >= 2 {
-			break
-		}
-		numTrades := len(item.stats.TradeDetails)
-		CUPriceUse := percentileCUPrice(extractCUPrices(item.stats.TradeDetails), config.CuPricePercentile)
-		if numTrades > config.NumArbsFilter && !globals.StringInList(item.mint, config.MintsIgnore) {
-			fmt.Fprintf(dw, "[%s] Mint: %s, Trades: %d, 95 Percentile CU Price: %.0f\n",
-				time.Now().Format("2006-01-02 15:04:05"), item.mint, len(item.stats.TradeDetails), CUPriceUse)
-			types.HotMintsList = append(types.HotMintsList, types.HotMints{TokenCA: item.mint, CuPrice: CUPriceUse})
-		}
+	item := list[0]
+	// for i, item := range list {
+	// 	if i >= 3 {
+	// 		break
+	// 	}
+	numTrades := len(item.stats.TradeDetails)
+	CUPriceUse := percentileCUPrice(extractCUPrices(item.stats.TradeDetails), config.CuPricePercentile)
+	if numTrades > config.NumArbsFilter && !globals.StringInList(item.mint, config.MintsIgnore) {
+		fmt.Fprintf(dw, "[%s] Mint: %s, Trades: %d, 95 Percentile CU Price: %.0f\n",
+			time.Now().Format("2006-01-02 15:04:05"), item.mint, len(item.stats.TradeDetails), CUPriceUse)
+		types.HotMintsList = append(types.HotMintsList, types.HotMints{TokenCA: item.mint, CuPrice: CUPriceUse})
 	}
+	// }
 	if len(types.HotMintsList) > 0 {
+		// if first trade qualifies filters, add 2 more for arb
+		if len(list) > 1 {
+			CUPriceUse := percentileCUPrice(extractCUPrices(list[1].stats.TradeDetails), config.CuPricePercentile)
+			types.HotMintsList = append(types.HotMintsList, types.HotMints{TokenCA: list[1].mint, CuPrice: CUPriceUse})
+		}
+		if len(list) > 2 {
+			CUPriceUse = percentileCUPrice(extractCUPrices(list[2].stats.TradeDetails), config.CuPricePercentile)
+			types.HotMintsList = append(types.HotMintsList, types.HotMints{TokenCA: list[2].mint, CuPrice: CUPriceUse})
+		}
 		tradeConfig.PushToMaster(types.HotMintsList, config, ctx)
 
 	} else {

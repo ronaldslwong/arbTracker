@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"math"
 	"sync"
 	"time"
 
@@ -32,6 +33,14 @@ type TokenPool struct {
 	RaydiumCPPools []types.RaydiumCPPool
 	PumpPools      []types.PumpPool
 	DLMMPairs      []types.DLMMTriple
+}
+
+func maxCU(trades []types.TradeConfig) float64 {
+	maxResult := 0.0
+	for _, x := range trades {
+		maxResult = math.Max(float64(maxResult), float64(x.CUPrice))
+	}
+	return maxResult
 }
 
 // Instruction Builder
@@ -131,19 +140,15 @@ func GenerateOnchainSwapInstruction(
 
 }
 
-func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier float64) { //solana.Signature {
+func SendTx(config configLoad.Config, tradeDetails []types.TradeConfig, multiplier float64) { //solana.Signature {
 	start := time.Now()
 
 	walletPubkey := globals.PrivateKey.PublicKey()
 
 	// wallet := solana.MustPublicKeyFromBase58(walletPubkey)
-	mint := solana.MustPublicKeyFromBase58(tradeDetails.Mint)
+	// mint := solana.MustPublicKeyFromBase58(tradeDetails.Mint)
 
 	// t1 := time.Now()
-	ata, _, err := solana.FindAssociatedTokenAddress(walletPubkey, mint)
-	if err != nil {
-		log.Fatalf("failed to derive ATA: %v", err)
-	}
 
 	// Dummy example public keys (replace with actual ones)
 	solMint := solana.MustPublicKeyFromBase58("So11111111111111111111111111111111111111112")
@@ -156,17 +161,24 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier
 	// Example tokenPools slice (empty here — fill with actual pools)
 	var tokenPools []TokenPool
 
-	pool := TokenPool{
-		XMint:          mint,
-		WalletXAccount: ata,                    //solana.MustPublicKeyFromBase58("E1SsaCT4eaKATYKKDb9RCWAf9HsdTN5w3uhvvNgHyqbd"),
-		RaydiumPools:   tradeDetails.Raydium,   // Not used in this tx
-		RaydiumCPPools: tradeDetails.RaydiumCP, // Not used in this tx
-		PumpPools:      tradeDetails.Pump,
-		DLMMPairs:      tradeDetails.DLMM,
+	for _, x := range tradeDetails {
+		mint := solana.MustPublicKeyFromBase58(x.Mint)
+		ata, _, err := solana.FindAssociatedTokenAddress(walletPubkey, mint)
+		if err != nil {
+			log.Fatalf("failed to derive ATA: %v", err)
+		}
+
+		pool := TokenPool{
+			XMint:          mint,
+			WalletXAccount: ata,         //solana.MustPublicKeyFromBase58("E1SsaCT4eaKATYKKDb9RCWAf9HsdTN5w3uhvvNgHyqbd"),
+			RaydiumPools:   x.Raydium,   // Not used in this tx
+			RaydiumCPPools: x.RaydiumCP, // Not used in this tx
+			PumpPools:      x.Pump,
+			DLMMPairs:      x.DLMM,
+		}
+
+		tokenPools = append(tokenPools, pool)
 	}
-
-	tokenPools = append(tokenPools, pool)
-
 	// Call your function
 	instruction := GenerateOnchainSwapInstruction(
 		walletPubkey,
@@ -184,13 +196,14 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier
 	// t2 := time.Now()
 	// fmt.Println(int(float64(tradeDetails.CUPrice) * float64(multiplier)))
 	// fmt.Println(globals.Min(int(float64(tradeDetails.CUPrice)*float64(multiplier)), config.MaxCUPrice))
-	priceIx := compute_budget.NewSetComputeUnitPriceInstruction(uint64(globals.Min(int(float64(tradeDetails.CUPrice)*float64(multiplier)), config.MaxCUPrice))).Build() // 5000 µlamports = 0.000005 SOL per CU
+	priceIx := compute_budget.NewSetComputeUnitPriceInstruction(uint64(globals.Min(int(maxCU(tradeDetails)*float64(multiplier)), config.MaxCUPrice))).Build() // 5000 µlamports = 0.000005 SOL per CU
 	limitIx := compute_budget.NewSetComputeUnitLimitInstruction(uint32(config.CuLimit)).Build()
 
 	// t25 := time.Now()
 
 	tx, err := solana.NewTransaction(
-		[]solana.Instruction{limitIx, priceIx, CreateKaminoBorrowInstruction(1000000000000), instruction, CreateKaminoRepayInstruction(1000000000000)}, // pass your instruction here
+		[]solana.Instruction{limitIx, priceIx, CreateKaminoBorrowInstruction(1000000000000, walletPubkey), instruction, CreateKaminoRepayInstruction(1000000000000, walletPubkey)}, // pass your instruction here
+		// []solana.Instruction{limitIx, priceIx, instruction}, // pass your instruction here
 		blockhashrefresh.GetCachedBlockhash(),
 		solana.TransactionPayer(walletPubkey),
 		solana.TransactionAddressTables(map[solana.PublicKey]solana.PublicKeySlice{
