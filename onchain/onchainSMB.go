@@ -217,10 +217,10 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier
 		log.Fatalf("failed to sign transaction: %v", err)
 	}
 
-	BlastTx(tx, start)
+	BlastTx(tx, start, config)
 }
 
-func BlastTx(tx *solana.Transaction, start time.Time) {
+func BlastTx(tx *solana.Transaction, start time.Time, config configLoad.Config) {
 	var wg sync.WaitGroup
 
 	// Send it
@@ -240,7 +240,9 @@ func BlastTx(tx *solana.Transaction, start time.Time) {
 				log.Fatalf("failed to send transaction: %v", err)
 			}
 			finish := time.Now()
-			fmt.Println(time.Now().Format("2006-01-02 15:04:05.999"), " Transaction sent:", txSig, "Total tx submission time: ", finish.Sub(start))
+			if config.ShowTx {
+				fmt.Println(time.Now().Format("2006-01-02 15:04:05.999"), " Transaction sent:", txSig, "Total tx submission time: ", finish.Sub(start))
+			}
 		}(x)
 	}
 	// return txSig

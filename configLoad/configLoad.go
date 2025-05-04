@@ -35,6 +35,7 @@ type Config struct {
 	AltAddress            string   `toml:altAddress`
 	MeteoraMkts           int      `toml:meteoraMkts`
 	PumpMkts              int      `toml:pumpMkts`
+	ShowTx                bool     `toml:showTx`
 }
 
 // LoadConfig reads from the TOML file and returns a Config struct

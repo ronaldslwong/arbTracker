@@ -95,7 +95,7 @@ func PushToMaster(mints []types.HotMints, config configLoad.Config, ctx context.
 		alt.InitLoadAlt(ctx, globals.RPCClient, altAdd.String())
 		// }
 		types.TradeConfigs = newConfigs
-		fmt.Println("uploaded trade list")
+		fmt.Println("uploaded trade list - spamming trades")
 	}
 
 	// Replace the global slice with the cleaned-up one

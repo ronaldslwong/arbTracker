@@ -427,6 +427,7 @@ func printHotMints(config configLoad.Config, ctx context.Context, dw *DualWriter
 		types.TradeConfigs = []types.TradeConfig{}
 		tradeLoop.TradeActive = false //reset dynamic CU flag
 		tradeLoop.LastTradeTime = time.Now()
+		fmt.Println("No mints - stop spamming trades")
 
 	}
 }

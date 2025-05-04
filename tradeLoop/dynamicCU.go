@@ -53,6 +53,9 @@ func updateCUPriceMultiplier(landingRate float64, config configLoad.Config) {
 	} else if landingRate > config.TargetMaxLandingRate {
 		// Decrease CU price multiplier if landing rate is too high
 		CurrentMultiplier /= config.PriceAdjustmentFactor
+		if CurrentMultiplier < 1 {
+			CurrentMultiplier = 1
+		}
 		log.Printf("Landing rate %.2f is above %.2f, decreasing multiplier to %.2f", landingRate, config.TargetMaxLandingRate, CurrentMultiplier)
 	} else {
 		// Landing rate is within the target range, so no change
