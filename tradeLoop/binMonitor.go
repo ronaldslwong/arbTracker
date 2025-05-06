@@ -1,7 +1,6 @@
 package tradeLoop
 
 import (
-	"fmt"
 	"sync"
 	"time"
 )
@@ -21,7 +20,7 @@ func RecordBinMovement(mint string, binID int) {
 	now := time.Now()
 	entry := BinMovement{Timestamp: now, BinID: binID}
 	binHistories[mint] = append(binHistories[mint], entry)
-	fmt.Println(binHistories[mint])
+	// fmt.Println(binHistories[mint])
 }
 
 func pruneAndCalculateVolatility(mint string, windowSecs int) int {

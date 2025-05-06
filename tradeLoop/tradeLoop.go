@@ -28,7 +28,10 @@ func StartTradeLoop(ctx context.Context, config configLoad.Config) {
 				for _, trade := range trades {
 					go func(t types.TradeConfig) {
 						tradesPerInterval := pruneAndCalculateVolatility(trade.Mint, config.ObservationWindow)
-						fmt.Println("Bin changes per interval", tradesPerInterval)
+						if tradesPerInterval > 0 {
+							fmt.Println("Bin changes per interval", tradesPerInterval)
+						}
+
 						if tradesPerInterval > config.BinMovesInWindow {
 							onchainSMB.SendTx(config, t, CurrentMultiplier)
 						}
