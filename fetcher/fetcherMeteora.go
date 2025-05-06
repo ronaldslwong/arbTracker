@@ -3,6 +3,7 @@ package fetcher
 import (
 	"arbTracker/configLoad"
 	"arbTracker/globals"
+	"arbTracker/tradeLoop"
 	"arbTracker/types"
 	"context"
 	"encoding/binary"
@@ -165,6 +166,8 @@ func UpdateDLMMActiveBin(market solana.PublicKey, activeID int32) error {
 
 				triple.BinID = int32(activeID)
 				triple.BinArrays = newPDA
+				tradeLoop.RecordBinMovement(cfg.Mint, int(triple.BinID))
+
 				fmt.Println("Updated bin for ", cfg.Mint, triple.BinID)
 			}
 		}

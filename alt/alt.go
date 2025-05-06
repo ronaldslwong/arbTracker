@@ -142,7 +142,7 @@ func BuildExtendALTInstruction(
 		}
 	}
 
-	fmt.Printf("Instruction Data (hex): %x\n", data)
+	// fmt.Printf("Instruction Data (hex): %x\n", data)
 	// fmt.Println(newAddresses)
 	programID := solana.MustPublicKeyFromBase58("AddressLookupTab1e1111111111111111111111111")
 

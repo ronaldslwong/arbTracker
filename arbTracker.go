@@ -256,7 +256,9 @@ func monitorTransactions(resp *pb.SubscribeUpdate, streamName string, config con
 	if accountData := resp.GetAccount(); accountData != nil {
 		poolMkt, _ := solana.PublicKeyFromBase58(base58.Encode(accountData.GetAccount().Pubkey))
 		activeBinId := int32(binary.LittleEndian.Uint32(accountData.Account.Data[76 : 76+4]))
-		fetcher.UpdateDLMMActiveBin(poolMkt, activeBinId)
+		go func() {
+			fetcher.UpdateDLMMActiveBin(poolMkt, activeBinId)
+		}()
 		return nil, false
 	}
 

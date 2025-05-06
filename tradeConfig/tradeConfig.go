@@ -83,17 +83,17 @@ func PushToMaster(mints []types.HotMints, config configLoad.Config, ctx context.
 
 		go fetcher.ReplaceDLMMAccountSubscriptions("main", accountSub)
 
-		// y := 2
-		// if y == 2 {
-		altAdd, _ := solana.PublicKeyFromBase58(config.AltAddress)
-		fmt.Println("Pushing new entries to ALT..", altAdd)
-		alt.SendExtendALTTransaction(globals.RPCClient, altAdd, &solana.Wallet{
-			PrivateKey: *globals.PrivateKey,
-		}, newConfigs)
+		y := 3
+		if y == 2 {
+			altAdd, _ := solana.PublicKeyFromBase58(config.AltAddress)
+			fmt.Println("Pushing new entries to ALT..", altAdd)
+			alt.SendExtendALTTransaction(globals.RPCClient, altAdd, &solana.Wallet{
+				PrivateKey: *globals.PrivateKey,
+			}, newConfigs)
 
-		fmt.Println("Refreshing ALT..")
-		alt.InitLoadAlt(ctx, globals.RPCClient, altAdd.String())
-		// }
+			fmt.Println("Refreshing ALT..")
+			alt.InitLoadAlt(ctx, globals.RPCClient, altAdd.String())
+		}
 		types.TradeConfigs = newConfigs
 		fmt.Println("uploaded trade list - spamming trades")
 	}
