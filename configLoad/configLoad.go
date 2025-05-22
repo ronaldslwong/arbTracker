@@ -38,6 +38,8 @@ type Config struct {
 	ShowTx                bool     `toml:showTx`
 	ObservationWindow     int      `toml:observationWindow`
 	BinMovesInWindow      int      `toml:binMovesInWindow`
+	RayCpmm               int      `toml:rayCpmm`
+	MeteoraAmm            int      `toml:meteoraAmm`
 }
 
 // LoadConfig reads from the TOML file and returns a Config struct

@@ -559,6 +559,22 @@ func grpc_subscribe_named(ctx context.Context, conn *grpc.ClientConn, streamName
 		}
 		// Add StreamWorker to GlobalSubManager
 		globals.GlobalSubManager.StreamWorkers[streamName] = worker
+
+		// ✅ Start a worker pool to consume from TradeChan
+		numWorkers := 10 // Tune based on CPU usage and workload
+		for i := 0; i < numWorkers; i++ {
+			go func(id int) {
+				for {
+					select {
+					case <-ctx.Done():
+						log.Printf("[%s][worker-%d] Context canceled. Exiting worker.", streamName, id)
+						return
+					case trade := <-tradeChan:
+						processTrade(trade) // Replace with your actual logic
+					}
+				}
+			}(i)
+		}
 	}
 
 	// Prepare subscription request
@@ -616,17 +632,17 @@ func grpc_subscribe_named(ctx context.Context, conn *grpc.ClientConn, streamName
 					continue
 				}
 
-				// Access the correct StreamWorker for this streamName
-				worker := globals.GlobalSubManager.StreamWorkers[streamName]
+				// // Access the correct StreamWorker for this streamName
+				// worker := globals.GlobalSubManager.StreamWorkers[streamName]
 
-				// Send trade to the correct stream's TradeChan
-				select {
-				case worker.TradeChan <- *trade:
-					// fmt.Println(trade)
-					// Successfully queued
-				default:
-					log.Printf("[%s] Trade channel is full! Dropping trade.", streamName)
-				}
+				// // Send trade to the correct stream's TradeChan
+				// select {
+				// case worker.TradeChan <- *trade:
+				// 	// fmt.Println(trade)
+				// 	// Successfully queued
+				// default:
+				// 	log.Printf("[%s] Trade channel is full! Dropping trade.", streamName)
+				// }
 			}
 		}
 	}()

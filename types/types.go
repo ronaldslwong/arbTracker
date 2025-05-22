@@ -28,13 +28,13 @@ type RaydiumPool struct {
 }
 
 type RaydiumCPPool struct {
-	ProgramId   solana.PublicKey
-	Authority   solana.PublicKey
-	Pool        solana.PublicKey
-	AMMConfig   solana.PublicKey
-	XVault      solana.PublicKey
-	SOLVault    solana.PublicKey
-	Observation solana.PublicKey
+	RayProgramId      solana.PublicKey // DLMM program ID
+	RayEventAuthority solana.PublicKey // DLMM event authority
+	Pool              solana.PublicKey
+	AmmConfig         solana.PublicKey
+	XVault            solana.PublicKey
+	SOLVault          solana.PublicKey
+	Observation       solana.PublicKey
 }
 
 type PumpPool struct {
@@ -46,6 +46,8 @@ type PumpPool struct {
 	XAccount       solana.PublicKey
 	SOLAccount     solana.PublicKey
 	FeeTokenWallet solana.PublicKey
+	CreatorFeeAta  solana.PublicKey
+	CreatorVA      solana.PublicKey
 }
 
 type DLMMTriple struct {
@@ -59,16 +61,33 @@ type DLMMTriple struct {
 	BinArrays          []solana.AccountMeta
 }
 
+type AMMMeteora struct {
+	AMMProgramId     solana.PublicKey // DLMM program ID
+	AMMVault         solana.PublicKey // DLMM event authority
+	Pool             solana.PublicKey
+	XVault           solana.PublicKey
+	SOLVault         solana.PublicKey
+	XTokenVault      solana.PublicKey
+	SOLTokenVault    solana.PublicKey
+	XLpMint          solana.PublicKey
+	SOLLpMint        solana.PublicKey
+	XPoolLp          solana.PublicKey
+	SOLPoolLp        solana.PublicKey
+	AdminTokenFeeX   solana.PublicKey
+	AdminTokenFeeSOL solana.PublicKey
+}
+
 type TradeConfig struct {
-	Mint      string
-	CA        solana.PublicKey
-	CUPrice   uint64
-	CULimit   uint64
-	Ata       solana.PublicKey
-	Raydium   []RaydiumPool
-	RaydiumCP []RaydiumCPPool
-	Pump      []PumpPool
-	DLMM      []DLMMTriple
+	Mint       string
+	CA         solana.PublicKey
+	CUPrice    uint64
+	CULimit    uint64
+	Ata        solana.PublicKey
+	Raydium    []RaydiumPool
+	RaydiumCP  []RaydiumCPPool
+	Pump       []PumpPool
+	DLMM       []DLMMTriple
+	MeteoraAmm []AMMMeteora
 }
 
 // Exported map and lock

@@ -10,8 +10,9 @@ import (
 )
 
 type DexScreenerResponse []struct {
-	DexId       string `json:"dexId"`
-	PairAddress string `json:"pairAddress"`
+	DexId       string   `json:"dexId"`
+	Labels      []string `json:labels`
+	PairAddress string   `json:"pairAddress"`
 	QuoteToken  struct {
 		Address string `json:"address"`
 	} `json:"quoteToken"`
@@ -28,12 +29,13 @@ type DexScreenerResponse []struct {
 }
 
 type DexPairData struct {
-	Symbol   string   `json:"symbol"`
-	TokenCa  string   `json:"tokenCa"`
-	Pumpswap []string `json:"pumpswap"`
-	Raydium  []string `json:"raydium"`
-	Meteora  []string `json:"meteora"`
-	Volume   float64  `json:"volume"`
+	Symbol      string   `json:"symbol"`
+	TokenCa     string   `json:"tokenCa"`
+	Pumpswap    []string `json:"pumpswap"`
+	RaydiumCpmm []string `json:"raydium"`
+	MeteoraAmm  []string `json:"meteoraAmm`
+	Meteora     []string `json:"meteora"`
+	Volume      float64  `json:"volume"`
 }
 
 type ByLiquidityQuote DexScreenerResponse
@@ -92,6 +94,8 @@ func QueryDexScreener(token_ca string, poolVolFilter float64, poolLiqFilter floa
 	var raydium []string
 	var pumpswap []string
 	var volume []float64
+	var raydiumCpmm []string
+	var meteoraAmm []string
 
 	for _, entry := range data {
 		// fmt.Println(entry)
@@ -103,13 +107,22 @@ func QueryDexScreener(token_ca string, poolVolFilter float64, poolLiqFilter floa
 			if entry.DexId == "pumpswap" {
 				pumpswap = append(pumpswap, entry.PairAddress)
 			}
-			if entry.DexId == "raydium" {
-				raydium = append(raydium, entry.PairAddress)
-			}
-			if entry.DexId == "meteora" {
+			// if entry.DexId == "raydium" {
+			// 	raydium = append(raydium, entry.PairAddress)
+			// }
+			if entry.DexId == "meteora" && entry.Labels[0] == "DLMM" {
 				meteora = append(meteora, entry.PairAddress)
 			}
 
+			if entry.DexId == "raydium" && len(entry.Labels) > 0 {
+				if entry.Labels[0] == "CPMM" {
+					raydiumCpmm = append(raydiumCpmm, entry.PairAddress)
+				}
+			}
+
+			if entry.DexId == "meteora" && entry.Labels[0] == "DYN" {
+				meteoraAmm = append(meteoraAmm, entry.PairAddress)
+			}
 			volume = append(volume, entry.Volume.M5)
 		}
 	}
@@ -123,12 +136,13 @@ func QueryDexScreener(token_ca string, poolVolFilter float64, poolLiqFilter floa
 	var returnDexPairData DexPairData
 	if sumVol >= TotVolumeFilter {
 		returnDexPairData = DexPairData{
-			Symbol:   data[0].BaseToken.Symbol,
-			TokenCa:  token_ca,
-			Pumpswap: pumpswap,
-			Raydium:  raydium,
-			Meteora:  meteora,
-			Volume:   sumVol,
+			Symbol:      data[0].BaseToken.Symbol,
+			TokenCa:     token_ca,
+			Pumpswap:    pumpswap,
+			RaydiumCpmm: raydiumCpmm,
+			MeteoraAmm:  meteoraAmm,
+			Meteora:     meteora,
+			Volume:      sumVol,
 		}
 	} else {
 		returnDexPairData = DexPairData{}

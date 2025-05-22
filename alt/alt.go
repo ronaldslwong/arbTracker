@@ -70,7 +70,7 @@ func AddNewAccountsToALT(altPubkey solana.PublicKey, payerPubkey solana.PublicKe
 			}
 		}
 		for _, cp := range cfg.RaydiumCP {
-			for _, acc := range []solana.PublicKey{cp.ProgramId, cp.Authority, cp.Pool, cp.AMMConfig, cp.XVault, cp.SOLVault, cp.Observation} {
+			for _, acc := range []solana.PublicKey{cp.RayProgramId, cp.RayEventAuthority, cp.Pool, cp.AmmConfig, cp.XVault, cp.SOLVault, cp.Observation} {
 				toAdd[acc.String()] = acc
 			}
 		}

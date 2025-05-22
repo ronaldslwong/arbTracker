@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -32,6 +33,8 @@ type TokenPool struct {
 	RaydiumCPPools []types.RaydiumCPPool
 	PumpPools      []types.PumpPool
 	DLMMPairs      []types.DLMMTriple
+	RayCpmm        []types.RaydiumCPPool
+	AmmMeteora     []types.AMMMeteora
 }
 
 // Instruction Builder
@@ -63,15 +66,17 @@ func GenerateOnchainSwapInstruction(
 			solana.NewAccountMeta(pool.WalletXAccount, true, false),
 		)
 
-		// for _, r := range pool.RaydiumPools {
-		// 	accounts = append(accounts,
-		// 		solana.NewAccountMeta(r.ProgramId, false, false),
-		// 		solana.NewAccountMeta(r.Authority, false, false),
-		// 		solana.NewAccountMeta(r.AMM, false, false),
-		// 		solana.NewAccountMeta(r.XVault, false, false),
-		// 		solana.NewAccountMeta(r.SOLVault, false, false),
-		// 	)
-		// }
+		for _, cp := range pool.RayCpmm {
+			accounts = append(accounts,
+				solana.NewAccountMeta(cp.RayProgramId, false, false),
+				solana.NewAccountMeta(cp.RayEventAuthority, false, false),
+				solana.NewAccountMeta(cp.Pool, true, false),
+				solana.NewAccountMeta(cp.AmmConfig, false, false),
+				solana.NewAccountMeta(cp.XVault, true, false),
+				solana.NewAccountMeta(cp.SOLVault, true, false),
+				solana.NewAccountMeta(cp.Observation, true, false),
+			)
+		}
 
 		// for _, cp := range pool.RaydiumCPPools {
 		// 	accounts = append(accounts,
@@ -95,6 +100,8 @@ func GenerateOnchainSwapInstruction(
 				solana.NewAccountMeta(p.XAccount, true, false),
 				solana.NewAccountMeta(p.SOLAccount, true, false),
 				solana.NewAccountMeta(p.FeeTokenWallet, true, false),
+				solana.NewAccountMeta(p.CreatorFeeAta, true, false),
+				solana.NewAccountMeta(p.CreatorVA, true, false),
 			)
 		}
 
@@ -111,9 +118,27 @@ func GenerateOnchainSwapInstruction(
 				accounts = append(accounts, &d.BinArrays[i])
 			}
 		}
+
+		for _, p := range pool.AmmMeteora {
+			accounts = append(accounts,
+				solana.NewAccountMeta(p.AMMProgramId, false, false),
+				solana.NewAccountMeta(p.AMMVault, false, false),
+				solana.NewAccountMeta(p.Pool, true, false),
+				solana.NewAccountMeta(p.XVault, true, false),
+				solana.NewAccountMeta(p.SOLVault, true, false),
+				solana.NewAccountMeta(p.XTokenVault, true, false),
+				solana.NewAccountMeta(p.SOLTokenVault, true, false),
+				solana.NewAccountMeta(p.XLpMint, true, false),
+				solana.NewAccountMeta(p.SOLLpMint, true, false),
+				solana.NewAccountMeta(p.XPoolLp, true, false),
+				solana.NewAccountMeta(p.SOLPoolLp, true, false),
+				solana.NewAccountMeta(p.AdminTokenFeeX, true, false),
+				solana.NewAccountMeta(p.AdminTokenFeeSOL, true, false),
+			)
+		}
 	}
 	// Prepare data
-	data := []byte{10}
+	data := []byte{15}
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, minimumProfit)
 	data = append(data, buf...)
@@ -133,7 +158,7 @@ func GenerateOnchainSwapInstruction(
 
 func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier float64) { //solana.Signature {
 	start := time.Now()
-
+	rand.Seed(time.Now().UnixNano())
 	walletPubkey := globals.PrivateKey.PublicKey()
 
 	// wallet := solana.MustPublicKeyFromBase58(walletPubkey)
@@ -160,9 +185,10 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier
 		XMint:          mint,
 		WalletXAccount: ata,                    //solana.MustPublicKeyFromBase58("E1SsaCT4eaKATYKKDb9RCWAf9HsdTN5w3uhvvNgHyqbd"),
 		RaydiumPools:   tradeDetails.Raydium,   // Not used in this tx
-		RaydiumCPPools: tradeDetails.RaydiumCP, // Not used in this tx
+		RayCpmm:        tradeDetails.RaydiumCP, // Not used in this tx
 		PumpPools:      tradeDetails.Pump,
 		DLMMPairs:      tradeDetails.DLMM,
+		AmmMeteora:     tradeDetails.MeteoraAmm,
 	}
 
 	tokenPools = append(tokenPools, pool)
@@ -184,13 +210,13 @@ func SendTx(config configLoad.Config, tradeDetails types.TradeConfig, multiplier
 	// t2 := time.Now()
 	// fmt.Println(int(float64(tradeDetails.CUPrice) * float64(multiplier)))
 	// fmt.Println(globals.Min(int(float64(tradeDetails.CUPrice)*float64(multiplier)), config.MaxCUPrice))
-	priceIx := compute_budget.NewSetComputeUnitPriceInstruction(uint64(globals.Min(int(float64(tradeDetails.CUPrice)*float64(multiplier)), config.MaxCUPrice))).Build() // 5000 µlamports = 0.000005 SOL per CU
+	priceIx := compute_budget.NewSetComputeUnitPriceInstruction(uint64(globals.Min(int(float64(tradeDetails.CUPrice+uint64(rand.Intn(int(float64(tradeDetails.CUPrice)*0.3))))*float64(multiplier)), config.MaxCUPrice))).Build() // 5000 µlamports = 0.000005 SOL per CU
 	limitIx := compute_budget.NewSetComputeUnitLimitInstruction(uint32(config.CuLimit)).Build()
 
 	// t25 := time.Now()
 
 	tx, err := solana.NewTransaction(
-		[]solana.Instruction{limitIx, priceIx, CreateKaminoBorrowInstruction(1000000000000), instruction, CreateKaminoRepayInstruction(1000000000000)}, // pass your instruction here
+		[]solana.Instruction{limitIx, priceIx, instruction}, // pass your instruction here
 		blockhashrefresh.GetCachedBlockhash(),
 		solana.TransactionPayer(walletPubkey),
 		solana.TransactionAddressTables(map[solana.PublicKey]solana.PublicKeySlice{
